@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn test_c1_2() {
         // This example is from packet capture, and shows how the values needs
-        // to be reversed to get the confirmation value as randoms to work
+        // to be reversed.
 
         // const sent_le_set_random_address: [u8; 10] = [0x1, 0x5, 0x20, 0x6, 0x6, 0x33, 0x74, 0xd6, 0x56, 0xd3];
 
