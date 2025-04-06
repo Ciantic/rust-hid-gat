@@ -46,14 +46,14 @@ fn ah(
 /// Key generation function s1 for LE legacy pairing
 /// 
 /// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-df36abdc-4d80-8f1b-0ef7-fbcae4d25825
-fn s1(
+pub fn s1(
     k: &[u8; 16], // 128-bit key
     r1: &[u8; 16], // 128-bit plaintext
     r2: &[u8; 16], // 128-bit plaintext
 ) -> [u8; 16] {
     e(k, &[
-        r1[0], r1[1], r1[2], r1[3], r1[4], r1[5], r1[6], r1[7],
-        r2[0], r2[1], r2[2], r2[3], r2[4], r2[5], r2[6], r2[7],
+        r1[8], r1[9], r1[10], r1[11], r1[12], r1[13], r1[14], r1[15],
+        r2[8], r2[9], r2[10], r2[11], r2[12], r2[13], r2[14], r2[15],
     ])
 }
 
@@ -187,6 +187,32 @@ mod tests {
     }
 
 
+    #[test]
+    fn test_s1() {
+        // Example values from: 
+        // https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-df36abdc-4d80-8f1b-0ef7-fbcae4d25825
+        //
+        // r1 is 0x000F0E0D0C0B0A091122334455667788
+        // r2 is 0x010203040506070899AABBCCDDEEFF00
+        // k is 0x00000000000000000000000000000000
+        // output is 0x9a1fe1f0e8b0f49b5b4216ae796da062
+        let k: [u8; 16] = [0x00; 16];
+        let r1: [u8; 16] = [
+            0x00, 0x0f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09,
+            0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+        ];
+        let r2: [u8; 16] = [
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+            0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+        ];
+        let expected: [u8; 16] = [
+            0x9a, 0x1f, 0xe1, 0xf0, 0xe8, 0xb0, 0xf4, 0x9b,
+            0x5b, 0x42, 0x16, 0xae, 0x79, 0x6d, 0xa0, 0x62,
+        ];
+        let result = s1(&k, &r1, &r2);
+        assert_eq!(result, expected);
+
+    }
 
 
     // use super::*; // Import functions from outer scope
