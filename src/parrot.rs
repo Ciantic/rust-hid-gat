@@ -9,6 +9,8 @@ use libc::{self, stat};
 use log::info;
 use std::{io, mem};
 
+use crate::c1;
+
 
 // Define the missing Bluetooth constants.
 const BTPROTO_HCI: i32 = 1;
@@ -334,6 +336,16 @@ pub fn run_parrot() -> Result<(), String> {
         loop {
             let mut buf = [0u8; 8096];
             let readsize = read(fd, &mut buf)?;
+            let mut preq = [0u8; 7];
+            let mut pres = [0u8; 7];
+            let mut initiatig_address_type = [0u8; 1];
+            let mut initiatig_address = [0u8; 6];
+            let mut responding_address_type = [0u8; 1];
+            let mut responding_address = [0u8; 6];
+            let mut random = [
+              0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // TODO: Random 16 bytes
+                0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16,
+            ];
 
             if buf[0..10]
                 == [
@@ -341,10 +353,21 @@ pub fn run_parrot() -> Result<(), String> {
                 ]
             {
                 // Pairing request
+                //
+                // https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-a358268d-39ef-27aa-6b2e-23949a02d79d
+                preq = [
+                    0x01, buf[11], buf[12], buf[13], buf[14], buf[15], buf[16],
+                ];
+
+                // Pairing response
+                //
+                // https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-11de7a80-eb1c-ed73-711b-51bf1720218b
+                pres = [0x02, 0x03, 0x00, 0x01, 0x10, 0x00, 0x01];
                 write(
                     fd,
                     &[
-                        0x02, handle[0], handle[1], 0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x02,
+                        0x02, handle[0], handle[1], 0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 
+                        0x02, // Code 0x02
                         0x03, // No Input No Output
                         0x00, // OOB data not present
                         0x01, // AuthReq
@@ -357,6 +380,21 @@ pub fn run_parrot() -> Result<(), String> {
 
             } else if buf[0..10] == [0x2, handle[0], 0x20, 0x15, 0x0, 0x11, 0x0, 0x6, 0x0, 0x3] {
                 // Pairing confirm
+                //
+                // https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-878f7b67-2330-bef1-1d52-8414dab01d87
+                let tk: [u8; 16] = [0; 16];
+                // let confirm_value = c1(
+                //     tk,
+                //     &random,
+                //     &pres,
+                //     &preq,
+
+                    
+
+                // )
+
+
+                
                 write(
                     fd,
                     &[
