@@ -2,6 +2,14 @@ use aes::Aes128;
 use cipher::generic_array::GenericArray;
 use cipher::{BlockEncrypt, KeyInit};
 
+#[cfg(test)]
+fn dump_bytes_as_hex(bytes: &[u8], len: usize) {
+    for byte in bytes.iter().take(len) {
+        print!("{:02x} ", byte);
+    }
+    println!();
+}
+
 /// XOR two 16-byte arrays
 fn xor_128(a: &[u8; 16], b: &[u8; 16]) -> [u8; 16] {
     let mut out = [0u8; 16];
@@ -76,15 +84,26 @@ pub fn c1(
 ) -> [u8; 16] {
 
     let p1 = [
-        iat & 0x01, rat & 0x01,
-        preq[0], preq[1], preq[2], preq[3], preq[4], preq[5], preq[6],
         pres[0], pres[1], pres[2], pres[3], pres[4], pres[5], pres[6],
+        preq[0], preq[1], preq[2], preq[3], preq[4], preq[5], preq[6],
+        rat & 0x01, iat & 0x01
     ];
+    #[cfg(test)]
+    {
+        print!("[p1] ");
+        dump_bytes_as_hex(&p1, 16);
+    }
     let p2 = [
-        ra[0], ra[1], ra[2], ra[3], ra[4], ra[5],
+        0, 0, 0, 0,
         ia[0], ia[1], ia[2], ia[3], ia[4], ia[5],
-        0, 0, 0, 0
+        ra[0], ra[1], ra[2], ra[3], ra[4], ra[5],
     ];
+    
+    #[cfg(test)]
+    {
+        print!("[p2] ");
+        dump_bytes_as_hex(&p2, 16);
+    }
     e(k, &xor_128(&e(k, &xor_128(r, &p1)), &p2))
 }
 
@@ -119,6 +138,55 @@ mod tests {
         let result = e(&key, &plaintext);
         assert_eq!(result, expected);
     }
+
+    #[test]
+    fn test_c1() {
+        // Example values from: 
+        // https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-24e06a05-2f0b-e5c9-7c65-25827ddb9975
+        //
+        // For example, if the 128-bit k is 0x00000000000000000000000000000000, the
+        // 128-bit value r is 0x5783D52156AD6F0E6388274EC6702EE0, the 128-bit value
+        // p1 is 0x05000800000302070710000001010001 and the 128-bit value p2 is
+        // 0x00000000A1A2A3A4A5A6B1B2B3B4B5B6 then the 128-bit output from the c1
+        // function is 0x1E1E3FEF878988EAD2A74DC5BEF13B86.
+        // 
+        // For example, if the 8-bit iat’ is 0x01, the 8-bit rat’ is 0x00, the
+        // 56-bit preq is 0x07071000000101 and the 56 bit pres is 0x05000800000302
+        // then p1 is 0x05000800000302070710000001010001.
+        //
+        // For example, if 48-bit ia is 0xA1A2A3A4A5A6 and the 48-bit ra is
+        // 0xB1B2B3B4B5B6 then p2 is 0x00000000A1A2A3A4A5A6B1B2B3B4B5B6.
+
+        let k: [u8; 16] = [0x00; 16];
+        let r: [u8; 16] = [
+            0x57, 0x83, 0xd5, 0x21, 0x56, 0xad, 0x6f, 0x0e,
+            0x63, 0x88, 0x27, 0x4e, 0xc6, 0x70, 0x2e, 0xe0,
+        ];
+        let pres : [u8; 7] = [
+            0x05, 0x00, 0x08, 0x00, 0x00, 0x03, 0x02,
+        ];
+        let preq : [u8; 7] = [
+            0x07, 0x07, 0x10, 0x00, 0x00, 0x01, 0x01,
+        ];
+        let iat: u8 = 0x01;
+        let rat: u8 = 0x00;
+        let ia: [u8; 6] = [
+            0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6,
+        ];
+        let ra: [u8; 6] = [
+            0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6,
+        ];
+        let result = c1(&k, &r, &pres, &preq, iat, &ia, rat, &ra);
+
+        
+        let expected: [u8; 16] = [
+            0x1e, 0x1e, 0x3f, 0xef, 0x87, 0x89, 0x88, 0xea,
+            0xd2, 0xa7, 0x4d, 0xc5, 0xbe, 0xf1, 0x3b, 0x86,
+        ];
+        assert_eq!(result, expected);
+    }
+
+
 
 
     // use super::*; // Import functions from outer scope
