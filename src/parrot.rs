@@ -338,12 +338,18 @@ pub fn run_parrot() -> Result<(), String> {
             let readsize = read(fd, &mut buf)?;
             let mut preq = [0u8; 7];
             let mut pres = [0u8; 7];
-            let mut initiatig_address_type = [0u8; 1];
-            let mut initiatig_address = [0u8; 6];
-            let mut responding_address_type = [0u8; 1];
-            let mut responding_address = [0u8; 6];
-            let mut random = [
-              0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // TODO: Random 16 bytes
+
+            // Client address
+            let mut iat = 0x0u8;
+            let mut ia = [0u8; 6];
+            let mut irandom = [0u8; 16];
+
+            // Server address
+            let mut rat = 0x1u8;
+            let mut ra = [0u8; 6];
+            let mut rrandom = [
+                // TODO: Random 16 bytes
+                0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 
                 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16,
             ];
 
