@@ -2,7 +2,7 @@ use libc::{self};
 use log::info;
 use std::{io, mem};
 
-use crate::c1::{c1, c1_rev};
+use crate::c1::{c1, c1_rev, s1_rev};
 
 // Define the missing Bluetooth constants.
 const BTPROTO_HCI: i32 = 1;
@@ -14,6 +14,18 @@ const HCI_DEV_DOWN: u64 = 0x400448CA;
 const OGF_LE_CTL: u16 = 0x08; // LE controller commands group.
 const OCF_LE_SET_ADVERTISING_PARAMETERS: u16 = 0x0006;
 const OCF_LE_SET_ADVERTISE_ENABLE: u16 = 0x000A;
+
+// Host Controller Interface documentation:
+//
+// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host-controller-interface/host-controller-interface-functional-specification.html
+//
+// Security manager documentation (SMP)
+//
+// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html
+//
+// Attribute Protocol
+//
+// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/attribute-protocol--att-.html
 
 fn cmd_le_event_mask() -> [u8; 12] {
     [
@@ -99,6 +111,64 @@ fn evt_is_le_connection_complete(buf: &[u8]) -> bool {
     buf[0..5] == [0x04, 0x3e, 0x13, 0x01, 0x00]
 }
 
+/// LE Long Term Key Request Event
+/// 
+/// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host-controller-interface/host-controller-interface-functional-specification.html#UUID-2bb7b9d8-d02b-0320-3dc8-9699e4b30332
+#[rustfmt::skip]
+fn evt_is_le_long_term_key_request(buf: &[u8], conhandle: &[u8; 2]) -> bool {
+    buf[0..16] == [0x04, 0x3e, 0xd, 0x5, conhandle[0], conhandle[1], 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]
+}
+
+/// Encryption Change event
+///
+/// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host-controller-interface/host-controller-interface-functional-specification.html#UUID-7b7d27f0-1a33-ff57-5b97-7d49a04cea26
+fn evt_is_encryption_change(buf: &[u8]) -> bool {
+    // Link Level Encryption is ON with AES-CCM for LE.
+    buf[0..7] == [0x4, 0x8, 0x4, 0x0, 0x40, 0x0, 0x1]
+}
+
+/// Encryption Information
+/// 
+/// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-868e7828-879b-b232-5135-f04a72ecb7f0
+#[rustfmt::skip]
+fn smp_encryption_information(conhandle: &[u8; 2], ltk: &[u8; 16]) -> [u8; 26] {
+    [
+        0x2, conhandle[0], 0x0, 0x15, 0x0, 0x11, 0x0, 0x6, 0x0, 0x6, 
+        ltk[0], ltk[1], ltk[2], ltk[3], ltk[4], ltk[5], ltk[6], ltk[7],
+        ltk[8], ltk[9], ltk[10], ltk[11], ltk[12], ltk[13], ltk[14], ltk[15],
+    ]
+}
+
+/// Central Identification
+/// 
+/// 
+#[rustfmt::skip]
+fn smp_central_identification(conhandle: &[u8; 2], random: &[u8; 8]) -> [u8; 20] {
+    [
+        0x2, conhandle[0], 0x0, 0xf, 0x0, 0xb, 0x0, 0x6, 0x0, 0x7, 
+        0x0, 0x2, // Encrypted diversifier 0x0200
+        random[0], random[1], random[2], random[3], 
+        random[4], random[5], random[6], random[7],
+    ]
+
+}
+
+/// LE Long Term Key Request Reply
+/// 
+/// For Just Works key is `s1_rev([0; 16], &rrand, &irand)` where `rrand` is the
+/// server (our) random value, and `irand` is the (client) initiator random
+/// value
+/// 
+/// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host-controller-interface/host-controller-interface-functional-specification.html#UUID-e89a5372-a7cd-ae2b-5c8d-e281694793ae
+#[rustfmt::skip]
+fn cmd_le_long_term_key_request_reply(conhandle: &[u8; 2], key: &[u8; 16]) -> [u8; 22] {
+    [
+        0x1, 0x1a, 0x20, 0x12, conhandle[0], conhandle[1], 
+        key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7],
+        key[8], key[9], key[10], key[11], key[12], key[13], key[14], key[15]
+    ]
+}
+
 #[rustfmt::skip]
 fn att_send_mtu_request(conhandle: &[u8; 2]) -> [u8; 12] {
     [0x2, conhandle[0], conhandle[1], 0x7, 0x0, 0x3, 0x0, 0x4, 0x0, 0x2, 0xf4, 0x0]
@@ -118,6 +188,40 @@ fn att_send_mtu_response(conhandle: &[u8; 2]) -> [u8; 12] {
         0x3,
         0xf7,
         0x0,
+    ]
+}
+
+#[rustfmt::skip]
+fn att_is_read_by_group_type_request(buf: &[u8], conhandle: &[u8; 2]) -> bool {
+    buf[0..10] == [0x2, conhandle[0], 0x20, 0xb, 0x0, 0x7, 0x0, 0x4, 0x0, 0x10]
+}
+
+/// ATT_FIND_BY_TYPE_VALUE_REQ
+/// 
+/// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/attribute-protocol--att-.html#UUID-48914d5f-be71-cb87-eb16-cc6fe0804da8
+#[rustfmt::skip]
+fn att_is_find_by_type_value_request(buf: &[u8], conhandle: &[u8; 2]) -> bool {
+    buf[0..10] == [0x2, conhandle[0], 0x20, 0xd, 0x0, 0x9, 0x0, 0x4, 0x0, 0x6]
+}
+
+#[rustfmt::skip]
+fn att_error_find_by_type_value_attribute_not_found(conhandle: &[u8; 2]) -> [u8; 14] {
+    [0x2, conhandle[0], 0x0, 0x9, 0x0, 0x5, 0x0, 0x4, 0x0, 0x1, 0x6, 0x1, 0x0, 0xa]
+}
+
+#[rustfmt::skip]
+fn att_read_by_group_type_response(
+    conhandle: &[u8; 2],
+    handle: &[u8; 2],
+    grpendhandle: &[u8; 2],
+    uuid: &[u8; 2],
+) -> [u8; 17] {
+    [
+        0x2, conhandle[0], 0x0, 0xc, 0x0, 0x8, 0x0, 0x4, 0x0, 0x11, 0x6, 
+        // Attribute data:
+        handle[0], handle[1], 
+        grpendhandle[0], grpendhandle[1], 
+        uuid[0], uuid[1]
     ]
 }
 
@@ -179,17 +283,20 @@ fn smp_pairing_response(conhandle: &[u8; 2]) -> [u8; 16] {
         0x02, // Code 0x02
         0x03, // No Input No Output
         0x00, // OOB data not present
-        0x01, // AuthReq
+        0x01, // AuthReq (CT2 0, Keypress 0, Secure Conn 0, MITM 0, Bonding 0x01)
         0x10, // Max encryption key size
         0x00, // Initiator key distribution
         0x01, // Responder key distribution
     ]
 }
 
+/// Pairing confirm
+///
+/// Confirm value is calculated using the C1 algorithm, use `c1_rev` for simple
+/// byte arrays.
+///
+/// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-878f7b67-2330-bef1-1d52-8414dab01d87
 fn smp_pairing_confirm(conhandle: &[u8; 2], confirmvalue: &[u8; 16]) -> [u8; 26] {
-    // Pairing confirm
-    //
-    // https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-878f7b67-2330-bef1-1d52-8414dab01d87
     [
         0x2,
         conhandle[0],
@@ -240,10 +347,10 @@ fn smp_is_pairing_random(buf: &[u8], conhandle: &[u8; 2]) -> bool {
         ]
 }
 
+/// Pairing random response
+///
+/// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-fd667b14-3d7b-58fa-bd85-6771d85293c8
 fn smp_pairing_random(conhandle: &[u8; 2], random: &[u8; 16]) -> [u8; 26] {
-    // Pairing random
-    //
-    // https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-fd667b14-3d7b-58fa-bd85-6771d85293c8
     [
         0x2,
         conhandle[0],
@@ -273,6 +380,15 @@ fn smp_pairing_random(conhandle: &[u8; 2], random: &[u8; 16]) -> [u8; 26] {
         random[14],
         random[15],
     ]
+}
+
+/// Pairing Failed response
+/// 
+/// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-4fde8eb1-530c-dd12-bbd2-78a326f12f31
+#[rustfmt::skip]
+fn smp_pairing_failed_confirm_value(conhandle: &[u8; 2]) -> [u8; 11] {
+    // 0x04 = Confirm Value Failed
+    [0x2, conhandle[0], 0x20, 0x6, 0x0, 0x2, 0x0, 0x6, 0x0, 0x5, 0x4]
 }
 
 /// Define a structure matching the C `sockaddr_hci` from <bluetooth/hci.h>
@@ -345,11 +461,18 @@ fn read(fd: i32, buf: &mut [u8]) -> Result<usize, String> {
 // }
 
 pub fn run_parrot() -> Result<(), String> {
+    let mut short_term_key: [u8; 16];
+    let long_term_key: [u8; 16] = [
+        0x08, 0x7A, 0xC7, 0xFB, 0x8C, 0x86, 0xF3, 0xCF, 0x36, 0xF4, 0x0C, 0xD8, 0xDD, 0xA2, 0xF9,
+        0xD3,
+    ];
+
     // let mut state = State::default();
     let server_addr: [u8; 6] = [0xa9, 0x36, 0x3c, 0xde, 0x52, 0xd7];
     let mut preq = [0u8; 7];
     let mut pres = [0u8; 7];
     let mut conhandle: [u8; 2] = [0, 0];
+    let mut max_key_size: u8 = 16;
 
     // Client address
     let mut iat = 0x0u8;
@@ -358,12 +481,12 @@ pub fn run_parrot() -> Result<(), String> {
     let mut iconfirm_value = [0u8; 16];
 
     // Server address
-    let mut rat = 0x1u8;
-    let mut ra = server_addr;
-    let mut rrandom = [
-        // TODO: Random 16 bytes
-        0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
-        0x16,
+    let rat = 0x1u8;
+    let ra = server_addr;
+    let rrandom = [
+        // TODO: Randomize
+        0x6d, 0xde, 0x61, 0xf5, 0x68, 0x16, 0x96, 0x67, 0x8a, 0x5e, 0x28, 0x70, 0x1a, 0x34, 0x38,
+        0x0,
     ];
 
     unsafe {
@@ -510,7 +633,7 @@ pub fn run_parrot() -> Result<(), String> {
         // Send MTU Response (Server) 247
         write(fd, &att_send_mtu_response(&conhandle))?;
 
-        println!("Waiting for pairing...");
+        println!("Waiting for pairing or connection...");
         loop {
             let mut buf = [0u8; 8096];
             let readsize = read(fd, &mut buf)?;
@@ -518,15 +641,15 @@ pub fn run_parrot() -> Result<(), String> {
             if smp_is_pairing_request(&buf, &conhandle) {
                 let res = smp_pairing_response(&conhandle);
                 // c1 requires preq, and pres
-                preq = [0x01, buf[11], buf[12], buf[13], buf[14], buf[15], buf[16]];
+                preq = [buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15]];
                 pres = [res[9], res[10], res[11], res[12], res[13], res[14], res[15]];
+                max_key_size = buf[13];
                 write(fd, &res)?;
             } else if smp_is_pairing_confirm(&buf, &conhandle) {
                 iconfirm_value = [
                     buf[10], buf[11], buf[12], buf[13], buf[14], buf[15], buf[16], buf[17],
                     buf[18], buf[19], buf[20], buf[21], buf[22], buf[23], buf[24], buf[25],
                 ];
-
                 let confirm_value = c1_rev(&[0; 16], &rrandom, &pres, &preq, iat, &ia, rat, &ra);
                 write(fd, &smp_pairing_confirm(&conhandle, &confirm_value))?;
             } else if smp_is_pairing_random(&buf, &conhandle) {
@@ -534,22 +657,53 @@ pub fn run_parrot() -> Result<(), String> {
                     buf[10], buf[11], buf[12], buf[13], buf[14], buf[15], buf[16], buf[17],
                     buf[18], buf[19], buf[20], buf[21], buf[22], buf[23], buf[24], buf[25],
                 ];
-                // TODO: Verify the random
-                println!("Validate the confirm value client sent");
-                println!("Confirm value: {:?}", iconfirm_value);
-                println!("R-Random value: {:?}", irandom);
-                println!("I-Random value: {:?}", rrandom);
-                println!(
-                    "Verify i: {:?}",
-                    c1_rev(&[0; 16], &irandom, &pres, &preq, iat, &ia, rat, &ra)
-                );
-                println!(
-                    "Verify r: {:?}",
-                    c1_rev(&[0; 16], &rrandom, &pres, &preq, iat, &ia, rat, &ra)
-                );
+                let confirm_value = c1_rev(&[0; 16], &irandom, &pres, &preq, iat, &ia, rat, &ra);
+                if confirm_value != iconfirm_value {
+                    write(fd, &smp_pairing_failed_confirm_value(&conhandle))?;
+                } else {
+                    write(fd, &smp_pairing_random(&conhandle, &rrandom))?;
+                }
+            } else if evt_is_le_long_term_key_request(&buf, &conhandle) {
+                short_term_key = s1_rev(&[0; 16], &rrandom, &irandom);
+                write(
+                    fd,
+                    &cmd_le_long_term_key_request_reply(&conhandle, &short_term_key),
+                )?;
+            } else if evt_is_encryption_change(&buf) {
+                write(fd, &smp_encryption_information(&conhandle, &long_term_key))?;
+                write(
+                    fd,
+                    &smp_central_identification(
+                        &conhandle,
+                        &[0x50, 0xc2, 0xe8, 0xd6, 0xe, 0x26, 0x9, 0xa],
+                    ),
+                )?;
+                break;
+            } else if att_is_find_by_type_value_request(&buf, &conhandle) {
+                write(
+                    fd,
+                    &att_error_find_by_type_value_attribute_not_found(&conhandle),
+                )?;
+            } else if att_is_read_by_group_type_request(&buf, &conhandle) {
+                let start_handle = [buf[10], buf[11]];
+                let end_handle = [buf[12], buf[13]];
+                let uuid = [buf[14], buf[15]];
 
-                // Send our pairing random
-                write(fd, &smp_pairing_random(&conhandle, &rrandom))?;
+                // 0x2800
+                if uuid == [0, 0x28] {
+                    write(
+                        fd,
+                        &att_read_by_group_type_response(
+                            &conhandle,
+                            &[0x03, 00],   // 0x0003
+                            &[0x07, 0x00], // 0x0007
+                            &uuid,
+                        ),
+                    )?;
+                } else {
+                    println!("Start-End: {:02x?} - {:02x?}", start_handle, end_handle);
+                    println!("Unexpected UUID: {:?}", &uuid);
+                }
             } else {
                 println!("Unexpected data");
             }

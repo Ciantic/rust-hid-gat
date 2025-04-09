@@ -60,6 +60,22 @@ pub fn s1(
     )
 }
 
+pub fn s1_rev(
+    k: &[u8; 16],  // 128-bit key
+    r1: &[u8; 16], // 128-bit plaintext
+    r2: &[u8; 16], // 128-bit plaintext
+) -> [u8; 16] {
+    let mut k_ = k.clone();
+    k_.reverse();
+    let mut r1_ = r1.clone();
+    r1_.reverse();
+    let mut r2_ = r2.clone();
+    r2_.reverse();
+    let mut res = s1(&k_, &r1_, &r2_);
+    res.reverse();
+    res
+}
+
 /// Confirm value generation function c1 for LE legacy pairing
 ///
 /// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-54/out/en/host/security-manager-specification.html#UUID-24e06a05-2f0b-e5c9-7c65-25827ddb9975
@@ -240,6 +256,47 @@ mod tests {
         ];
         let result = s1(&k, &r1, &r2);
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_s2_2() {
+        // This example is from packet capture, and shows how the values needs
+        // to be reversed.
+        //
+        // Rcvd Pairing Random
+        // > 02 40 20 15 00 11 00 06 00 04 65 05 8d 11 0b 62 4b 30 dd 7f 7d 73
+        // > 20 f2 ec 74
+        //
+        // Sent Pairing Random
+        // > 02 40 00 15 00 11 00 06 00 04 6d de 61 f5 68 16 96 67 8a 5e 28 70
+        // > 1a 34 38 00
+        //
+        // Sent LE Long Term Key Reply (STK because of Just Works)
+        // > 01 1a 20 12 40 00 e9 06 ea 2a d9 e7 61 55 e9 55 03 3d 69 4b bc fa
+
+        let mut irand = [
+            0x65, 0x5, 0x8d, 0x11, 0xb, 0x62, 0x4b, 0x30, 0xdd, 0x7f, 0x7d, 0x73, 0x20, 0xf2, 0xec,
+            0x74,
+        ];
+        let mut rrand = [
+            0x6d, 0xde, 0x61, 0xf5, 0x68, 0x16, 0x96, 0x67, 0x8a, 0x5e, 0x28, 0x70, 0x1a, 0x34,
+            0x38, 0x0,
+        ];
+        let mut expected_stk = [
+            0xe9, 0x6, 0xea, 0x2a, 0xd9, 0xe7, 0x61, 0x55, 0xe9, 0x55, 0x3, 0x3d, 0x69, 0x4b, 0xbc,
+            0xfa,
+        ];
+
+        // Use s1_rev as reversed shortcut
+        let result = s1_rev(&[0x00u8; 16], &rrand, &irand);
+        assert_eq!(result, expected_stk);
+
+        // or reverse the values to match the order in the spec
+        irand.reverse();
+        rrand.reverse();
+        expected_stk.reverse();
+        let result = s1(&[0x00u8; 16], &rrand, &irand);
+        assert_eq!(result, expected_stk);
     }
 
     #[test]
