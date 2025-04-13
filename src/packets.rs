@@ -1,6 +1,3 @@
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use std::io::Cursor;
-
 /// This crate defines the packets, they are closly following similar pattern as in Wireshark:
 ///
 /// - HciPacket (H4, bottom most)
@@ -21,6 +18,13 @@ use std::io::Cursor;
 pub enum ParseError {
     InvalidHciAclPacketHandle(u16),
     InsufficientData,
+    TooMuchData,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SerializeError {
+    DataTooLong,
+    InvalidHciAclPacketHandle(u16),
 }
 
 pub type ParseResult<T> = Result<T, ParseError>;
@@ -52,16 +56,18 @@ pub enum L2capPacket {
     Unknown(u16, Vec<u8>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
 pub enum PacketBoundaryFlag {
+    #[default]
     FirstNonFlushable = 0b00,
     Continuation = 0b01,
     FirstFlushable = 0b10,
     Deprecated = 0b11,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
 pub enum BroadcastFlag {
+    #[default]
     PointToPoint = 0b00,
     BdEdrBroadcast = 0b01,
 }
@@ -117,18 +123,18 @@ impl HciPacket {
         }
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        match self {
-            HciPacket::Command(cmd) => vec![vec![0x01], cmd.to_bytes()].concat(),
-            HciPacket::AclData(acl) => vec![vec![0x02], acl.to_bytes()].concat(),
-            HciPacket::Event(evt) => vec![vec![0x04], evt.to_bytes()].concat(),
+    pub fn to_bytes(&self) -> Result<Vec<u8>, SerializeError> {
+        Ok(match self {
+            HciPacket::Command(cmd) => vec![vec![0x01], cmd.to_bytes()?].concat(),
+            HciPacket::AclData(acl) => vec![vec![0x02], acl.to_bytes()?].concat(),
+            HciPacket::Event(evt) => vec![vec![0x04], evt.to_bytes()?].concat(),
             HciPacket::Unknown(packet_type, data) => {
                 let mut bytes = Vec::with_capacity(1 + data.len());
                 bytes.push(*packet_type);
                 bytes.extend_from_slice(data);
                 bytes
             }
-        }
+        })
     }
 }
 
@@ -140,10 +146,7 @@ impl HciCommand {
         if data.len() < 3 {
             return Err(ParseError::InsufficientData);
         }
-
-        let opcode = Cursor::new(&data[0..2])
-            .read_u16::<LittleEndian>()
-            .map_err(|_| ParseError::InsufficientData)?; // Index 0, 1
+        let opcode = u16::from_le_bytes([data[0], data[1]]);
         let param_len = data[2] as usize; // Index 2
 
         let total_expected_payload_len = 3 + param_len;
@@ -158,14 +161,17 @@ impl HciCommand {
         })
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        assert!(self.data.len() <= 255, "HCI Command data too long");
-        let capacity = 4 + self.data.len(); // 1 (Type) + 2 (Opcode) + 1 (Len) + Params
-        let mut bytes = Vec::with_capacity(capacity);
-        bytes.write_u16::<LittleEndian>(self.opcode).unwrap();
-        bytes.write_u8(self.data.len() as u8).unwrap();
-        bytes.extend_from_slice(&self.data);
-        bytes
+    pub fn to_bytes(&self) -> Result<Vec<u8>, SerializeError> {
+        if self.data.len() > 255 {
+            return Err(SerializeError::DataTooLong);
+        }
+
+        Ok(vec![
+            self.opcode.to_le_bytes().to_vec(),
+            vec![self.data.len() as u8],
+            self.data.to_vec(),
+        ]
+        .concat())
     }
 }
 
@@ -192,14 +198,16 @@ impl HciEvent {
         })
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        assert!(self.data.len() <= 255, "HCI Event data too long");
-        let capacity = 3 + self.data.len(); // 1 (Type) + 1 (Code) + 1 (Len) + Params
-        let mut bytes = Vec::with_capacity(capacity);
-        bytes.write_u8(self.event_code).unwrap();
-        bytes.write_u8(self.data.len() as u8).unwrap();
-        bytes.extend_from_slice(&self.data);
-        bytes
+    pub fn to_bytes(&self) -> Result<Vec<u8>, SerializeError> {
+        if self.data.len() > 255 {
+            return Err(SerializeError::DataTooLong);
+        }
+        Ok(vec![
+            vec![self.event_code],
+            vec![self.data.len() as u8],
+            self.data.to_vec(),
+        ]
+        .concat())
     }
 }
 
@@ -210,21 +218,19 @@ impl L2capPacket {
         if data.len() < 4 {
             return Err(ParseError::InsufficientData);
         }
-        let l2cap_payload_len = Cursor::new(&data[0..2])
-            .read_u16::<LittleEndian>()
-            .map_err(|_| ParseError::InsufficientData)? as usize; // Index 0, 1
+        let l2cap_payload_len = u16::from_le_bytes([data[0], data[1]]);
+        let channel_id = u16::from_le_bytes([data[2], data[3]]);
 
-        let channel_id = Cursor::new(&data[2..4])
-            .read_u16::<LittleEndian>()
-            .map_err(|_| ParseError::InsufficientData)?; // Index 2, 3
-
-        let total_expected_l2cap_len = 4 + l2cap_payload_len;
+        let total_expected_l2cap_len = 4 + l2cap_payload_len as usize;
         if data.len() < total_expected_l2cap_len {
             return Err(ParseError::InsufficientData);
         }
+        if data.len() > total_expected_l2cap_len {
+            return Err(ParseError::TooMuchData);
+        }
 
         // Slice the actual inner payload data (ATT, SMP, etc.)
-        let inner_payload_data = &data[4..total_expected_l2cap_len];
+        let inner_payload_data = &data[4..];
 
         let l2cap_packet_data = match channel_id {
             0x0004 => {
@@ -243,24 +249,19 @@ impl L2capPacket {
         Ok(l2cap_packet_data)
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let (channel_id, inner_pdu_bytes) = self.to_bytes_with_cid();
-        let l2cap_payload_len = inner_pdu_bytes.len();
-        assert!(
-            l2cap_payload_len <= u16::MAX as usize,
-            "L2CAP payload too long"
-        );
+        let l2cap_payload_len = inner_pdu_bytes.len() as u16;
+        if l2cap_payload_len > u16::MAX {
+            return Err(SerializeError::DataTooLong);
+        }
 
-        let capacity = 4 + l2cap_payload_len;
-        let mut bytes = Vec::with_capacity(capacity);
-
-        bytes
-            .write_u16::<LittleEndian>(l2cap_payload_len as u16)
-            .unwrap();
-        bytes.write_u16::<LittleEndian>(channel_id).unwrap();
-        bytes.extend_from_slice(&inner_pdu_bytes);
-
-        bytes
+        Ok(vec![
+            l2cap_payload_len.to_le_bytes().to_vec(),
+            channel_id.to_le_bytes().to_vec(),
+            inner_pdu_bytes.to_vec(),
+        ]
+        .concat())
     }
     fn to_bytes_with_cid(&self) -> (u16, Vec<u8>) {
         match self {
@@ -285,9 +286,7 @@ impl HciAclData {
             return Err(ParseError::InsufficientData);
         }
 
-        let handle_and_flags = Cursor::new(&data[0..2])
-            .read_u16::<LittleEndian>()
-            .map_err(|_| ParseError::InsufficientData)?;
+        let handle_and_flags = u16::from_le_bytes([data[0], data[1]]);
 
         // Handle range: 0x000 to 0xEFF (all other values reserved for future use)
         let handle = handle_and_flags & 0x0FFF; // Mask to 12 bits
@@ -318,29 +317,27 @@ impl HciAclData {
         })
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let l2cap_pdu_bytes = self.data.to_bytes();
+    pub fn to_bytes(&self) -> Result<Vec<u8>, SerializeError> {
+        let l2cap_pdu_bytes = self.data.to_bytes()?;
         let hci_total_data_len = l2cap_pdu_bytes.len();
-        assert!(
-            hci_total_data_len <= u16::MAX as usize,
-            "HCI ACL data (L2CAP PDU) too long"
-        );
-        assert!(self.handle <= 0x0FFF, "Handle value exceeds 12 bits");
+        if hci_total_data_len > u16::MAX as usize {
+            return Err(SerializeError::DataTooLong);
+        }
 
-        let capacity = 5 + hci_total_data_len;
-        let mut bytes = Vec::with_capacity(capacity);
+        if self.handle > 0x0EFF {
+            return Err(SerializeError::InvalidHciAclPacketHandle(self.handle));
+        }
 
         let mut handle_and_flags = self.handle & 0x0FFF; // Mask to 12 bits
         handle_and_flags |= (self.pb as u16) << 12; // Set Packet Boundary Flag
         handle_and_flags |= (self.bc as u16) << 14; // Set Broadcast Flag
 
-        bytes.write_u16::<LittleEndian>(handle_and_flags).unwrap();
-        bytes
-            .write_u16::<LittleEndian>(hci_total_data_len as u16)
-            .unwrap();
-        bytes.extend_from_slice(&l2cap_pdu_bytes);
-
-        bytes
+        Ok(vec![
+            handle_and_flags.to_le_bytes().to_vec(),
+            (hci_total_data_len as u16).to_le_bytes().to_vec(),
+            l2cap_pdu_bytes,
+        ]
+        .concat())
     }
 }
 
@@ -358,11 +355,7 @@ impl AttPdu {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let capacity = 1 + self.data.len();
-        let mut bytes = Vec::with_capacity(capacity);
-        bytes.write_u8(self.opcode).unwrap();
-        bytes.extend_from_slice(&self.data);
-        bytes
+        vec![vec![self.opcode], self.data.to_vec()].concat()
     }
 }
 
@@ -380,11 +373,7 @@ impl SmpPdu {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let capacity = 1 + self.data.len();
-        let mut bytes = Vec::with_capacity(capacity);
-        bytes.write_u8(self.code).unwrap();
-        bytes.extend_from_slice(&self.data);
-        bytes
+        vec![vec![self.code], self.data.to_vec()].concat()
     }
 }
 
@@ -577,9 +566,9 @@ mod tests {
             opcode: 0x0C03,
             data: vec![],
         };
-        assert_eq!(cmd.to_bytes(), vec![0x03, 0x0C, 0x00]);
+        assert_eq!(cmd.to_bytes().unwrap(), vec![0x03, 0x0C, 0x00]);
         assert_eq!(
-            HciPacket::Command(cmd).to_bytes(),
+            HciPacket::Command(cmd).to_bytes().unwrap(),
             vec![0x01, 0x03, 0x0C, 0x00]
         );
 
@@ -587,9 +576,12 @@ mod tests {
             opcode: 0xABCD,
             data: vec![0xFE, 0xDC],
         };
-        assert_eq!(cmd_params.to_bytes(), vec![0xCD, 0xAB, 0x02, 0xFE, 0xDC]);
         assert_eq!(
-            HciPacket::Command(cmd_params).to_bytes(),
+            cmd_params.to_bytes().unwrap(),
+            vec![0xCD, 0xAB, 0x02, 0xFE, 0xDC]
+        );
+        assert_eq!(
+            HciPacket::Command(cmd_params).to_bytes().unwrap(),
             vec![0x01, 0xCD, 0xAB, 0x02, 0xFE, 0xDC]
         );
     }
@@ -600,9 +592,12 @@ mod tests {
             event_code: 0x05,
             data: vec![0x00, 0x40, 0x00, 0x13],
         };
-        assert_eq!(evt.to_bytes(), vec![0x05, 0x04, 0x00, 0x40, 0x00, 0x13]);
         assert_eq!(
-            HciPacket::Event(evt).to_bytes(),
+            evt.to_bytes().unwrap(),
+            vec![0x05, 0x04, 0x00, 0x40, 0x00, 0x13]
+        );
+        assert_eq!(
+            HciPacket::Event(evt).to_bytes().unwrap(),
             vec![0x04, 0x05, 0x04, 0x00, 0x40, 0x00, 0x13]
         );
     }
@@ -623,11 +618,11 @@ mod tests {
             data: l2cap_packet,
         };
         assert_eq!(
-            acl_packet.to_bytes(),
+            acl_packet.to_bytes().unwrap(),
             vec![0x40, 0x00, 8, 0, 4, 0, 4, 0, 0x12, 0x1A, 0x00, 0x01]
         );
         assert_eq!(
-            HciPacket::AclData(acl_packet).to_bytes(),
+            HciPacket::AclData(acl_packet).to_bytes().unwrap(),
             vec![0x02, 0x40, 0x00, 8, 0, 4, 0, 4, 0, 0x12, 0x1A, 0x00, 0x01]
         );
     }
@@ -635,7 +630,10 @@ mod tests {
     #[test]
     fn test_serialize_hci_unknown_packet() {
         let unknown_packet = HciPacket::Unknown(0x99, vec![0x01, 0x02, 0x03]);
-        assert_eq!(unknown_packet.to_bytes(), vec![0x99, 0x01, 0x02, 0x03]);
+        assert_eq!(
+            unknown_packet.to_bytes().unwrap(),
+            vec![0x99, 0x01, 0x02, 0x03]
+        );
     }
 
     #[test]
@@ -670,7 +668,7 @@ mod tests {
         };
         let l2cap_packet = L2capPacket::Att(att_pdu);
         assert_eq!(
-            l2cap_packet.to_bytes(),
+            l2cap_packet.to_bytes().unwrap(),
             vec![4, 0, 4, 0, 0x12, 0x1A, 0x00, 0x01]
         );
 
@@ -680,14 +678,14 @@ mod tests {
         };
         let l2cap_packet_smp = L2capPacket::Smp(smp_pdu);
         assert_eq!(
-            l2cap_packet_smp.to_bytes(),
+            l2cap_packet_smp.to_bytes().unwrap(),
             vec![4, 0, 6, 0, 0x01, 0x02, 0x03, 0x04]
         );
 
         let unknown_data = vec![0xAA, 0xBB, 0xCC];
         let l2cap_packet_unknown = L2capPacket::Unknown(0x00F0, unknown_data.clone());
         assert_eq!(
-            l2cap_packet_unknown.to_bytes(),
+            l2cap_packet_unknown.to_bytes().unwrap(),
             vec![3, 0, 0xF0, 0, 0xAA, 0xBB, 0xCC]
         );
     }
@@ -700,10 +698,10 @@ mod tests {
             opcode: 0x1001,
             data: vec![],
         });
-        let bytes = original.to_bytes();
+        let bytes = original.to_bytes().unwrap();
         let parsed = HciPacket::from_bytes(&bytes).unwrap();
         assert_eq!(original, parsed);
-        assert_eq!(bytes, parsed.to_bytes());
+        assert_eq!(bytes, parsed.to_bytes().unwrap());
     }
 
     #[test]
@@ -712,10 +710,10 @@ mod tests {
             event_code: 0x0E,
             data: vec![0x01, 0x01, 0x10, 0x00, 0x01, 0x02, 0x03, 0x04],
         });
-        let bytes = original.to_bytes();
+        let bytes = original.to_bytes().unwrap();
         let parsed = HciPacket::from_bytes(&bytes).unwrap();
         assert_eq!(original, parsed);
-        assert_eq!(bytes, parsed.to_bytes());
+        assert_eq!(bytes, parsed.to_bytes().unwrap());
     }
 
     #[test]
@@ -734,10 +732,10 @@ mod tests {
             data: l2cap_packet,
         });
 
-        let bytes = original.to_bytes();
+        let bytes = original.to_bytes().unwrap();
         let parsed = HciPacket::from_bytes(&bytes).unwrap();
         assert_eq!(&original, &parsed);
-        assert_eq!(bytes, parsed.to_bytes());
+        assert_eq!(bytes, parsed.to_bytes().unwrap());
     }
 
     #[test]
@@ -754,10 +752,10 @@ mod tests {
             data: l2cap_packet,
         });
 
-        let bytes = original.to_bytes();
+        let bytes = original.to_bytes().unwrap();
         let parsed = HciPacket::from_bytes(&bytes).unwrap();
         assert_eq!(&original, &parsed);
-        assert_eq!(bytes, parsed.to_bytes());
+        assert_eq!(bytes, parsed.to_bytes().unwrap());
     }
 
     #[test]
@@ -841,7 +839,8 @@ mod tests {
                     bc: BroadcastFlag::PointToPoint,
                     data: L2capPacket::Unknown(0xBEEF, vec![]),
                 }
-                .to_bytes(),
+                .to_bytes()
+                .unwrap(),
                 vec![0x40, 0x00, 0x04, 0x00, 0x00, 0x00, 0xEF, 0xBE]
             );
         }
@@ -853,7 +852,8 @@ mod tests {
                     bc: BroadcastFlag::PointToPoint,
                     data: L2capPacket::Unknown(0xBEEF, vec![]),
                 }
-                .to_bytes(),
+                .to_bytes()
+                .unwrap(),
                 vec![0x40, 0x10, 0x04, 0x00, 0x00, 0x00, 0xEF, 0xBE]
             );
         }
@@ -865,7 +865,8 @@ mod tests {
                     bc: BroadcastFlag::PointToPoint,
                     data: L2capPacket::Unknown(0xBEEF, vec![]),
                 }
-                .to_bytes(),
+                .to_bytes()
+                .unwrap(),
                 vec![0x40, 0x20, 0x04, 0x00, 0x00, 0x00, 0xEF, 0xBE]
             );
         }
@@ -877,7 +878,8 @@ mod tests {
                     bc: BroadcastFlag::PointToPoint,
                     data: L2capPacket::Unknown(0xBEEF, vec![]),
                 }
-                .to_bytes(),
+                .to_bytes()
+                .unwrap(),
                 vec![0x40, 0x30, 0x04, 0x00, 0x00, 0x00, 0xEF, 0xBE]
             );
         }
@@ -889,7 +891,8 @@ mod tests {
                     bc: BroadcastFlag::BdEdrBroadcast,
                     data: L2capPacket::Unknown(0xBEEF, vec![]),
                 }
-                .to_bytes(),
+                .to_bytes()
+                .unwrap(),
                 vec![0x40, 0x40, 0x04, 0x00, 0x00, 0x00, 0xEF, 0xBE]
             );
         }
