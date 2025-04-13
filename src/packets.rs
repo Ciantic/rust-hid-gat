@@ -1,15 +1,25 @@
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::Cursor;
 
+/// This crate defines the packets, they are closly following similar pattern as in Wireshark:
+///
+/// - HciPacket (H4, bottom most)
+///    - HciCommand
+///    - HciEvent
+///    - HciAclData (single connection specific)
+///        - L2capPacket
+///            - AttPdu
+///            - SmpPdu
+///
+/// This crate doesn't not specify messages for Commands, Events, or L2CAP PDUs.
+
 // HCI ACL Data packets:
 //
 // https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-60/out/en/host-controller-interface/host-controller-interface-functional-specification.html#UUID-bc4ffa33-44ef-e93c-16c8-14aa99597cfc
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseError {
-    InvalidHciPacketType(u8),
     InvalidHciAclPacketHandle(u16),
-    InvalidL2capChannelId(u16),
     InsufficientData,
 }
 

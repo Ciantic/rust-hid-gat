@@ -2,9 +2,6 @@ use crate::packets::SmpPdu;
 
 // https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-60/out/en/host/security-manager-specification.html
 
-pub struct ParseError(String);
-pub struct SerializationError(String);
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SmpMsg {
     /// Pairing Request
@@ -113,8 +110,8 @@ impl SmpMsg {
         }
     }
 
-    pub fn to_smp_pdu(&self) -> Result<SmpPdu, SerializationError> {
-        Ok(match self {
+    pub fn to_smp_pdu(&self) -> SmpPdu {
+        match self {
             SmpMsg::PairingRequest {
                 io_capability,
                 oob_data_flag,
@@ -182,11 +179,11 @@ impl SmpMsg {
                 code: *code,
                 data: data.clone(),
             },
-        })
+        }
     }
 
-    pub fn from_smp_pdu(smp: SmpPdu) -> Result<Self, ParseError> {
-        Ok(match smp.code {
+    pub fn from_smp_pdu(smp: SmpPdu) -> Self {
+        match smp.code {
             0x01 => SmpMsg::PairingRequest {
                 io_capability: IOCapability::from_code(smp.data[0]),
                 oob_data_flag: OOBDataFlag::from_code(smp.data[1]),
@@ -214,7 +211,7 @@ impl SmpMsg {
                 random_value: u64::from_le_bytes(smp.data[1..9].try_into().unwrap()),
             },
             _ => SmpMsg::Unknown(smp.code, smp.data),
-        })
+        }
     }
 }
 
