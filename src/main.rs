@@ -1,7 +1,9 @@
 use gatt::*;
 
 mod c1;
+mod command;
 mod controller;
+mod event;
 mod gatt;
 mod packets;
 mod parrot;
