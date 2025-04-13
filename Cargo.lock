@@ -751,6 +751,7 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "bt-hci",
+ "byteorder",
  "cipher",
  "embassy-executor",
  "embassy-futures",

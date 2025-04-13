@@ -1,8 +1,11 @@
 use libc::{self};
 use log::info;
-use std::{io, mem};
+use std::{collections::HashMap, io, mem};
 
-use crate::c1::{c1, c1_rev, s1_rev};
+use crate::{
+    c1::{c1, c1_rev, s1_rev},
+    gatt::AttributeDatabase,
+};
 
 // Define the missing Bluetooth constants.
 const BTPROTO_HCI: i32 = 1;
@@ -204,6 +207,52 @@ fn att_is_find_by_type_value_request(buf: &[u8], conhandle: &[u8; 2]) -> bool {
     buf[0..10] == [0x2, conhandle[0], 0x20, 0xd, 0x0, 0x9, 0x0, 0x4, 0x0, 0x6]
 }
 
+fn att_find_by_type_value_response(
+    conhandle: &[u8; 2],
+    uids_and_handles: &[(u16, u16)],
+) -> Vec<u8> {
+    todo!();
+    /*
+       02                         // HCI ACL Packet Indicator
+       01 00                      // HCI Handle (0x0001), PB=0, BC=0
+       12 00                      // HCI Length = 18
+       0E 00                      // L2CAP Length = 14
+       04 00                      // L2CAP Channel ID = ATT (0x0004)
+       11                         // ATT Opcode = Read By Type Response
+       04                         // Entry Length = 4 bytes
+       01 00 00 18                // Handle 0x0001, UUID 0x1800
+       05 00 0A 18                // Handle 0x0005, UUID 0x180A
+       08 00 12 18                // Handle 0x0008, UUID 0x1812
+    */
+    /*
+    let mut buf = vec![
+        0x2,
+        conhandle[0],
+        conhandle[1],
+        0xd,
+        0x0,
+        0x9,
+        0x0,
+        0x4,
+        0x0,
+        0x6,
+    ];
+    for (uid, handle) in uids_and_handles {
+        let hbytes = handle.to_le_bytes();
+        let uidbytes = uid.to_le_bytes();
+        buf.push(hbytes[0]);
+        buf.push(hbytes[1]);
+        buf.push(uidbytes[0]);
+        buf.push(uidbytes[1]);
+        // buf.push((handle >> 8) as u8);
+        // buf.push(*handle as u8);
+        // buf.push((uid >> 8) as u8);
+        // buf.push(*uid as u8);
+    }
+    buf
+    */
+}
+
 #[rustfmt::skip]
 fn att_error_find_by_type_value_attribute_not_found(conhandle: &[u8; 2]) -> [u8; 14] {
     [0x2, conhandle[0], 0x0, 0x9, 0x0, 0x5, 0x0, 0x4, 0x0, 0x1, 0x6, 0x1, 0x0, 0xa]
@@ -212,14 +261,14 @@ fn att_error_find_by_type_value_attribute_not_found(conhandle: &[u8; 2]) -> [u8;
 #[rustfmt::skip]
 fn att_read_by_group_type_response(
     conhandle: &[u8; 2],
-    handle: &[u8; 2],
+    atthandle: &[u8; 2],
     grpendhandle: &[u8; 2],
     uuid: &[u8; 2],
 ) -> [u8; 17] {
     [
         0x2, conhandle[0], 0x0, 0xc, 0x0, 0x8, 0x0, 0x4, 0x0, 0x11, 0x6, 
         // Attribute data:
-        handle[0], handle[1], 
+        atthandle[0], atthandle[1], 
         grpendhandle[0], grpendhandle[1], 
         uuid[0], uuid[1]
     ]
@@ -460,7 +509,7 @@ fn read(fd: i32, buf: &mut [u8]) -> Result<usize, String> {
 //     connection: Option<Connection>,
 // }
 
-pub fn run_parrot() -> Result<(), String> {
+pub fn run_parrot(db: AttributeDatabase) -> Result<(), String> {
     let mut short_term_key: [u8; 16];
     let long_term_key: [u8; 16] = [
         0x08, 0x7A, 0xC7, 0xFB, 0x8C, 0x86, 0xF3, 0xCF, 0x36, 0xF4, 0x0C, 0xD8, 0xDD, 0xA2, 0xF9,
@@ -488,6 +537,40 @@ pub fn run_parrot() -> Result<(), String> {
         0x6d, 0xde, 0x61, 0xf5, 0x68, 0x16, 0x96, 0x67, 0x8a, 0x5e, 0x28, 0x70, 0x1a, 0x34, 0x38,
         0x0,
     ];
+
+    /*
+    DEVICE = My Pi   TYPE=Mesh  node=1  ADDRESS = DC:A6:32:04:DB:56
+    PRIMARY_SERVICE = 1800
+        LECHAR=Device Name   SIZE=4   Permit=02 UUID=2A00
+        LECHAR=Appearance    SIZE=2   Permit=02 UUID=2A01
+    PRIMARY_SERVICE = 180A
+        LECHAR= PnP ID           SIZE=7 Permit=02   UUID=2A50
+    PRIMARY_SERVICE = 1812
+        LECHAR=Protocol Mode   SIZE=1  Permit=06  UUID=2A4E
+        LECHAR=HID Info        SIZE=4  Permit=02  UUID=2A4A
+        LECHAR=HID Ctl Point   SIZE=8  Permit=04  UUID=2A4C
+        LECHAR=Report Map      SIZE=47 Permit=02  UUID=2A4B
+        LECHAR=Report1         SIZE=8  Permit=92  UUID=2A4D
+    */
+
+    struct Service {
+        uuid: u16,
+        start_handle: u16,
+        end_handle: u16,
+    }
+
+    struct Characteristic {
+        uuid: u16,
+        handle: u16,
+        properties: u8,
+    }
+
+    struct ServiceLayout {
+        service: Service,
+        characteristics: Vec<Characteristic>,
+    }
+
+    let mut service_layouts: HashMap<u16, ServiceLayout> = HashMap::new();
 
     unsafe {
         let fd = libc::socket(
@@ -701,6 +784,7 @@ pub fn run_parrot() -> Result<(), String> {
                         ),
                     )?;
                 } else {
+                    println!("Requested UUID {:02x?}", uuid);
                     println!("Start-End: {:02x?} - {:02x?}", start_handle, end_handle);
                     println!("Unexpected UUID: {:?}", &uuid);
                 }
