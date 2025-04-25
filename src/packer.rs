@@ -150,21 +150,41 @@ pub trait FromToPacket {
     where
         Self: Sized;
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError>;
-}
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
-pub enum PacketError {
-    NotEnoughBytes,
-    InvalidInstruction,
-    InvalidBytes,
-    InvalidBits,
-}
+    // Helpers
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-struct BitsetInstruction {
-    pub bits: (usize, usize),
-    pub bytes: usize,
-    pub advance: usize,
+    fn from_packet_with(
+        bytes: &mut Packet,
+        instruction: BitsetInstruction,
+    ) -> Result<Self, PacketError>
+    where
+        Self: Sized,
+    {
+        bytes.push_instruction(instruction);
+        Self::from_packet(bytes)
+    }
+
+    fn from_packet_bits(bytes: &mut Packet, bits: (usize, usize)) -> Result<Self, PacketError>
+    where
+        Self: Sized,
+    {
+        let instruction = BitsetInstruction { bits, advance: 0 };
+        Self::from_packet_with(bytes, instruction)
+    }
+
+    fn to_packet_with(
+        &self,
+        bytes: &mut Packet,
+        instruction: BitsetInstruction,
+    ) -> Result<(), PacketError> {
+        bytes.push_instruction(instruction);
+        self.to_packet(bytes)
+    }
+
+    fn to_packet_bits(&self, bytes: &mut Packet, bits: (usize, usize)) -> Result<(), PacketError> {
+        let instruction = BitsetInstruction { bits, advance: 0 };
+        self.to_packet_with(bytes, instruction)
+    }
 }
 
 pub trait FromToBytes {
@@ -185,6 +205,29 @@ impl FromToBytes for bool {
     }
 }
 
+impl FromToPacket for bool {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        let mut result = [0u8; 1];
+        bytes.unpack_bytes(1)?.copy_from_slice(&mut result);
+        Ok(result[0] == 1_u8)
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        bytes.pack_bytes(self.to_bytes())
+    }
+}
+
+impl<const T: usize> FromToPacket for [u8; T] {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        let mut result = [0u8; T];
+        let output = bytes.unpack_bytes(T)?;
+        result.copy_from_slice(&output);
+        Ok(result)
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        bytes.pack_bytes(&self)
+    }
+}
+
 macro_rules! impl_from_to_bytes {
     ($type:ty, $size:expr) => {
         impl FromToBytes for $type {
@@ -196,6 +239,20 @@ macro_rules! impl_from_to_bytes {
                 <$type>::from_le_bytes(bytes.try_into().map_err(|_| PacketError::NotEnoughBytes)?)
                     .try_into()
                     .map_err(|_| PacketError::InvalidBytes)
+            }
+        }
+        impl FromToPacket for $type {
+            fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                let bytes = bytes.unpack_bytes($size)?;
+                Ok(Self::from_le_bytes(
+                    bytes
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| PacketError::NotEnoughBytes)?,
+                ))
+            }
+            fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+                bytes.pack_bytes(self.to_le_bytes())
             }
         }
     };
@@ -213,6 +270,21 @@ impl_from_to_bytes!(i64, 8);
 impl_from_to_bytes!(i128, 16);
 impl_from_to_bytes!(f32, 4);
 impl_from_to_bytes!(f64, 8);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PacketError {
+    NotEnoughBytes,
+    InvalidInstruction,
+    InvalidBytes,
+    InvalidBits,
+    Unspecified(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct BitsetInstruction {
+    pub bits: (usize, usize),
+    pub advance: usize,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct Packet {
@@ -259,14 +331,23 @@ impl Packet {
         Ok(())
     }
 
+    pub fn peek<T: Sized + FromToBytes>(&self) -> Result<T, PacketError> {
+        let size = std::mem::size_of::<T>();
+        let bytes = &self
+            .data
+            .get(self.position..self.position + size)
+            .ok_or(PacketError::NotEnoughBytes)?;
+        T::from_bytes(bytes).map_err(|_| PacketError::InvalidBytes)
+    }
+
     pub fn rewind(&mut self) {
         self.position = 0;
     }
 
-    pub fn if_next_bytes(&mut self, bytes_eq: &[u8]) -> bool {
+    pub fn next_if_eq(&mut self, bytes_eq: &[u8]) -> bool {
         let v = self
             .data
-            .get(self.position..bytes_eq.len())
+            .get(self.position..self.position + bytes_eq.len())
             .map_or(false, |slice| slice == bytes_eq);
         if v {
             self.position += bytes_eq.len();
@@ -274,28 +355,15 @@ impl Packet {
         v
     }
 
-    fn push_instruction(
-        &mut self,
-        bits: (usize, usize),
-        bytes: usize,
-        advance: usize,
-    ) -> Result<(), PacketError> {
-        if bits.0 > (8 * bytes - 1) || bits.1 > (8 * bytes - 1) {
-            return Err(PacketError::InvalidBits);
-        }
-        self.instructions.push(BitsetInstruction {
-            bits,
-            bytes,
-            advance,
-        });
-        Ok(())
+    fn push_instruction(&mut self, instruction: BitsetInstruction) {
+        self.instructions.push(instruction);
     }
 
     /// Set bit mask for the next byte to be packed. The bits are set in the range (start, end).
-    pub fn set_bits<T: Sized>(&mut self, start: usize, end: usize) -> Result<(), PacketError> {
-        let size = std::mem::size_of::<T>();
-        self.push_instruction((start, end), size, 0)
-    }
+    // pub fn set_bits<T: Sized>(&mut self, start: usize, end: usize) -> Result<(), PacketError> {
+    //     let size = std::mem::size_of::<T>();
+    //     self.push_instruction((start, end), size, 0)
+    // }
 
     fn pop_instruction(&mut self) -> Result<(), PacketError> {
         if self.instructions.is_empty() {
@@ -322,25 +390,23 @@ impl Packet {
 
     pub fn pack_bytes<T: AsRef<[u8]>>(&mut self, bytes: T) -> Result<(), PacketError> {
         let bytes = bytes.as_ref();
-        if self.data.len() < self.position + bytes.len() {
-            self.data.resize(self.position + bytes.len(), 0);
+        let size = bytes.len();
+        if self.data.len() < self.position + size {
+            self.data.resize(self.position + size, 0);
         }
         if let Some(instruction) = self.instructions.last() {
-            if instruction.bytes != bytes.len() {
-                return Err(PacketError::InvalidBytes);
-            }
             // Update old bits with new bits
-            let mut old_bits = self.data[self.position..self.position + instruction.bytes].to_vec();
+            let mut old_bits = self.data[self.position..self.position + size].to_vec();
             set_bits_le(&mut old_bits, instruction.bits, bytes);
 
             // Copy the updated bits back to the data
-            self.data[self.position..self.position + instruction.bytes].copy_from_slice(&old_bits);
+            self.data[self.position..self.position + size].copy_from_slice(&old_bits);
             self.position += instruction.advance;
             self.instructions.pop();
         } else {
             // No instruction, just copy the bytes
             self.data[self.position..self.position + bytes.len()].copy_from_slice(bytes);
-            self.position += bytes.len();
+            self.position += size;
         }
         Ok(())
     }
@@ -350,9 +416,6 @@ impl Packet {
             return Err(PacketError::NotEnoughBytes);
         }
         if let Some(instruction) = self.instructions.last() {
-            if instruction.bytes != size {
-                return Err(PacketError::InvalidBytes);
-            }
             let bytes = &self.data[self.position..self.position + size];
             let bytes = get_bits_le(&bytes, instruction.bits);
             self.position += instruction.advance;
@@ -393,28 +456,23 @@ mod tests {
     fn test_pack_with_set_bits() {
         let mut packet = Packet::new();
 
-        packet.set_bits::<u8>(2, 3).unwrap();
-        packet.pack::<u8>(0xff).unwrap();
-
-        packet.set_bits::<u8>(6, 7).unwrap();
-        packet.pack::<u8>(0xff).unwrap();
+        (0xff_u8).to_packet_bits(&mut packet, (2, 3)).unwrap();
+        (0xff_u8).to_packet_bits(&mut packet, (6, 7)).unwrap();
 
         assert_eq!(packet.get_bytes(), &[0b1100_1100]);
 
         packet.next::<u8>().unwrap();
-        packet.pack::<u8>(0xFF).unwrap();
+        0xff_u8.to_packet(&mut packet).unwrap();
+
         assert_eq!(packet.get_bytes(), &[0b1100_1100, 0b1111_1111]);
     }
 
     #[test]
     fn test_unpack_with_set_bits() {
         let mut packet = Packet::from_slice(&[0b1100_1100, 0b1111_1111]);
-        packet.set_bits::<u8>(2, 3).unwrap();
-        assert_eq!(packet.unpack::<u8>().unwrap(), 0b0000_0011);
-        packet.set_bits::<u8>(0, 3).unwrap();
-        assert_eq!(packet.unpack::<u8>().unwrap(), 0b0000_1100);
-        packet.set_bits::<u8>(6, 7).unwrap();
-        assert_eq!(packet.unpack::<u8>().unwrap(), 0b0000_0011);
+        assert_eq!(<u8>::from_packet_bits(&mut packet, (2, 3)), Ok(0b0000_0011));
+        assert_eq!(<u8>::from_packet_bits(&mut packet, (0, 3)), Ok(0b0000_1100));
+        assert_eq!(<u8>::from_packet_bits(&mut packet, (6, 7)), Ok(0b0000_0011));
     }
 
     #[test]
@@ -426,16 +484,15 @@ mod tests {
         let mut packet = Packet::new();
 
         // PB Flag (2 bits)
-        packet.set_bits::<u16>(12, 13).unwrap();
-        packet.pack::<u16>(pb_flag).unwrap();
+        pb_flag.to_packet_bits(&mut packet, (12, 13)).unwrap();
 
         // BC Flag (2 bits)
-        packet.set_bits::<u16>(14, 15).unwrap();
-        packet.pack::<u16>(bc_flag).unwrap();
+        bc_flag.to_packet_bits(&mut packet, (14, 15)).unwrap();
 
         // Connection Handle (12 bits)
-        packet.set_bits::<u16>(0, 11).unwrap();
-        packet.pack::<u16>(connection_handle).unwrap();
+        connection_handle
+            .to_packet_bits(&mut packet, (0, 11))
+            .unwrap();
 
         assert_eq!(packet.get_bytes(), &[0x40, 0b1010_0000]);
     }
@@ -445,16 +502,13 @@ mod tests {
         let mut packet = Packet::from_slice(&[0x40, 0b1010_0000]);
 
         // PB Flag (2 bits)
-        packet.set_bits::<u16>(12, 13).unwrap();
-        let pb_flag = packet.unpack::<u16>().unwrap();
+        let pb_flag = u16::from_packet_bits(&mut packet, (12, 13)).unwrap();
 
         // BC Flag (2 bits)
-        packet.set_bits::<u16>(14, 15).unwrap();
-        let bc_flag = packet.unpack::<u16>().unwrap();
+        let bc_flag = u16::from_packet_bits(&mut packet, (14, 15)).unwrap();
 
         // Connection Handle (12 bits)
-        packet.set_bits::<u16>(0, 11).unwrap();
-        let connection_handle = packet.unpack::<u16>().unwrap();
+        let connection_handle = u16::from_packet_bits(&mut packet, (0, 11)).unwrap();
 
         assert_eq!(pb_flag, 0b_10_u16);
         assert_eq!(bc_flag, 0b_10_u16);

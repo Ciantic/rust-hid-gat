@@ -6,6 +6,14 @@
         {
             "label": "rsync",
             "type": "shell",
+            "windows": {
+                "options": {
+                    "shell": {
+                        "executable": "bash.exe",
+                        "args": ["-i", "-c"]
+                    }
+                }
+            },
             "command": "rsync -avz --exclude target --exclude .git . pi@pi.local:/home/pi/projects/rust-hid-gat/"
         }
     ]

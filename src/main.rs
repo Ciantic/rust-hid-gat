@@ -2,11 +2,15 @@ use gatt::*;
 
 mod c1;
 mod command;
-mod controller;
+// mod controller;
 mod event;
 mod gatt;
 mod packets;
-mod parrot;
+// mod parrot
+mod core;
+mod core_gen;
+mod packer;
+mod primitives;
 mod smp;
 
 fn build_hid_db() -> AttributeDatabase {
@@ -118,7 +122,7 @@ fn build_hid_db() -> AttributeDatabase {
 #[tokio::main]
 async fn main() {
     let db = build_hid_db();
-    parrot::run_parrot(db).unwrap();
+    // parrot::run_parrot(db).unwrap();
 
     std::io::stdin().read_line(&mut String::new()).unwrap();
     /*

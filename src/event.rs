@@ -26,7 +26,7 @@ pub enum HciEventMsg {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum HciStatus {
-    Success, // Often used for 'pending' in CommandStatus, but represents 0x00
+    Success,
     Error(u8),
 }
 
@@ -92,7 +92,7 @@ const COMMAND_STATUS_TOTAL_LEN: usize = 2 + COMMAND_STATUS_PARAM_LEN as usize; /
 impl From<u8> for HciStatus {
     fn from(val: u8) -> Self {
         match val {
-            0x00 => HciStatus::Success, // Represents 'pending' in CommandStatus context
+            0x00 => HciStatus::Success,
             err => HciStatus::Error(err),
         }
     }
@@ -161,7 +161,6 @@ impl TryFrom<u8> for ClockAccuracy {
 // --- Error Conversion ---
 impl From<std::array::TryFromSliceError> for ParseError {
     fn from(e: std::array::TryFromSliceError) -> Self {
-        // Store the underlying error for potential debugging
         ParseError::SliceToArrayError
     }
 }
@@ -221,7 +220,6 @@ impl HciEventMsg {
 
                 Ok(bytes)
             }
-            // --- NEW SERIALIZATION LOGIC ---
             HciEventMsg::CommandStatus {
                 status,
                 num_hci_command_packets,
