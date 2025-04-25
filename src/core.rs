@@ -37,7 +37,7 @@ pub enum HciEventMsg {
 pub enum HciStatus {
     /// id = &[0x00]
     Success,
-    /// id = &[0x01]
+    /// id = _
     Failure(u8),
 }
 
@@ -82,17 +82,31 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_hci_stauts() {
-        let mut packet = Packet::from_slice(&[0x00]);
-        let handle = HciStatus::from_packet(&mut packet).unwrap();
-        assert_eq!(handle, HciStatus::Success);
-    }
-
-    #[test]
     fn deserialize_role() {
         let mut packet = Packet::from_slice(&[0x00]);
         let handle = Role::from_packet(&mut packet).unwrap();
-        assert_eq!(handle, Role::Peripheral);
+        assert_eq!(handle, Role::Central);
+    }
+
+    #[test]
+    fn hci_status() {
+        let mut packet = Packet::from_slice(&[0x00]);
+        let handle = HciStatus::from_packet(&mut packet).unwrap();
+        assert_eq!(handle, HciStatus::Success);
+
+        let mut packet = Packet::from_slice(&[0x05]);
+        let handle = HciStatus::from_packet(&mut packet).unwrap();
+        assert_eq!(handle, HciStatus::Failure(0x05));
+    }
+    #[test]
+    fn serialize_hci_status() {
+        let mut packet = Packet::from_slice(&[0x05]);
+
+        HciStatus::Success.to_packet(&mut packet).unwrap();
+        assert_eq!(packet.get_bytes(), &[0x00]);
+
+        HciStatus::Failure(0x05).to_packet(&mut packet).unwrap();
+        assert_eq!(packet.get_bytes(), &[0x00, 0x05]);
     }
 
     #[test]

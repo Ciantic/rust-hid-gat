@@ -89,7 +89,7 @@ impl FromToPacket for HciStatus {
         if bytes.next_if_eq(&[0x00]) {
             return Ok(HciStatus::Success);
         }
-        if bytes.next_if_eq(&[0x01]) {
+        if true {
             return Ok(HciStatus::Failure(bytes.unpack()?));
         }
         Err(PacketError::Unspecified(format!(
@@ -101,7 +101,7 @@ impl FromToPacket for HciStatus {
         match self {
             HciStatus::Success => bytes.pack_bytes(&[0x00]),
             HciStatus::Failure(m0) => {
-                bytes.pack_bytes(&[0x01])?;
+                Ok(())?;
                 m0.to_packet(bytes)?;
                 Ok(())
             }

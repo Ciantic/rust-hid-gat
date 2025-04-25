@@ -1,3 +1,4 @@
+use core::panic;
 use proc_macro2::Literal;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -35,28 +36,50 @@ fn find_attr_by_name(attrs: &Vec<Attribute>, name: &str) -> Option<Expr> {
     res
 }
 
+enum IdBytes {
+    Bytes(TokenStream),
+    Passthrough,
+}
+
+fn get_id_bytes(variant: &syn::Variant) -> IdBytes {
+    let id_bytes = find_attr_by_name(&variant.attrs, "id");
+    if let Some(expr) = id_bytes {
+        if let Expr::Infer(_) = &expr {
+            return IdBytes::Passthrough;
+        }
+        return IdBytes::Bytes(expr.to_token_stream());
+    }
+    if let Some((_, val)) = &variant.discriminant {
+        return IdBytes::Bytes(quote! {
+            &[#val]
+        });
+    }
+    panic!("No id found for variant {:?}", variant.to_token_stream());
+}
+
 fn impl_enum(enu: &ItemEnum) -> TokenStream {
     let enum_name = enu.ident.clone();
     let variants: Vec<&syn::Variant> = enu.variants.iter().collect::<Vec<_>>();
 
-    // let enum_attrs = enum_attrs.iter().collect::<Vec<_>>();
     let enum_name = enum_name.clone();
-    // let variants_1 = variants.iter().map(|variant| variant.ident.clone());
-    // let variants_2 = variants.iter().map(|variant| variant.ident.clone());
+    let last_variant = variants.last().unwrap();
     let to_packet = variants.iter().map(|variant| {
         let name = variant.ident.clone();
-        let id_bytes = find_attr_by_name(&variant.attrs, "id");
-        let mut id_bytes_ = id_bytes.to_token_stream();
-        if id_bytes.is_none() {
-            if let Some(discr) = &variant.discriminant {
-                let discr_value = discr.1.to_token_stream();
-                id_bytes_ = quote! {
-                    &[#discr_value]
-                };
-            } else {
-                panic!("No id found for variant {enum_name}::{name}");
+
+        // Match variant id bytes (&[0x01, 0x02] or _ which is the passthrough)
+        let id_bytes_match = match get_id_bytes(variant) {
+            IdBytes::Bytes(id_bytes) => quote! {
+                bytes.pack_bytes(#id_bytes)
+            },
+            IdBytes::Passthrough => {
+                if variant.ident != last_variant.ident {
+                    panic!("Passthrough (_) id bytes are only allowed on the last variant");
+                }
+                quote! {
+                    Ok(())
+                }
             }
-        }
+        };
 
         match &variant.fields {
             Fields::Named(fields) => {
@@ -69,7 +92,7 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
                     #enum_name::#name {
                         #(#field_names),*
                     } => {
-                        bytes.pack_bytes(#id_bytes_)?;
+                        #id_bytes_match?;
                         #(
                             bytes.pack(#field_names)?;
                         )*
@@ -89,7 +112,7 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
                     #enum_name::#name(
                         #(#matchers),*
                     ) => {
-                        bytes.pack_bytes(#id_bytes_)?;
+                        #id_bytes_match?;
                         #(
                             #matchers.to_packet(bytes)?;
                         )*
@@ -100,7 +123,7 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
             }
             Fields::Unit => {
                 quote! {
-                    #enum_name::#name => bytes.pack_bytes(#id_bytes_)
+                    #enum_name::#name => #id_bytes_match
 
                 }
             }
@@ -109,18 +132,21 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
 
     let from_packet = variants.iter().map(|variant| {
         let name = variant.ident.clone();
-        let id_bytes = find_attr_by_name(&variant.attrs, "id");
-        let mut id_bytes_ = id_bytes.to_token_stream();
-        if id_bytes.is_none() {
-            if let Some(discr) = &variant.discriminant {
-                let discr_value = discr.1.to_token_stream();
-                id_bytes_ = quote! {
-                    &[#discr_value]
-                };
-            } else {
-                panic!("No id found for variant {enum_name}::{name}");
+
+        // Match variant id bytes (&[0x01, 0x02] or _ which is the passthrough)
+        let id_bytes_match = match get_id_bytes(variant) {
+            IdBytes::Bytes(id_bytes) => quote! {
+                bytes.next_if_eq(#id_bytes)
+            },
+            IdBytes::Passthrough => {
+                if variant.ident != last_variant.ident {
+                    panic!("Passthrough (_) id bytes are only allowed on the last variant");
+                }
+                quote! {
+                    true
+                }
             }
-        }
+        };
 
         let make_fields = match &variant.fields {
             Fields::Unnamed(tuple_fields) => {
@@ -165,7 +191,7 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
         };
 
         quote! {
-            if bytes.next_if_eq(#id_bytes_) {
+            if #id_bytes_match {
                 return Ok(#make_fields);
             }
         }
@@ -198,8 +224,6 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
                 .map(|field| field.ident.as_ref().expect("Expected named fields"))
                 .collect::<Vec<_>>();
 
-            let field_types = f.named.iter().map(|field| &field.ty).collect::<Vec<_>>();
-
             quote! {
 
                 impl FromToPacket for #struct_name {
@@ -222,10 +246,6 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
             }
         }
         Fields::Unnamed(f) => {
-            // println!("Unnamed struct: {:?}", strut.ident);
-            // panic!("Unnamed structs are not supported yet");
-
-            let field_types = f.unnamed.iter().map(|field| &field.ty).collect::<Vec<_>>();
             let field_numbers = (0..f.unnamed.len())
                 .map(|i| Lit::new(Literal::usize_unsuffixed(i)))
                 .collect::<Vec<_>>();
@@ -241,7 +261,6 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
                 .collect::<Vec<_>>();
 
             quote! {
-
                 impl FromToPacket for #struct_name {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
                         Ok(Self(
