@@ -89,19 +89,12 @@ impl FromToPacket for HciStatus {
         if bytes.next_if_eq(&[0x00]) {
             return Ok(HciStatus::Success);
         }
-        if true {
-            return Ok(HciStatus::Failure(bytes.unpack()?));
-        }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(HciStatus)
-        )))
+        return Ok(HciStatus::Failure(bytes.unpack()?));
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
             HciStatus::Success => bytes.pack_bytes(&[0x00]),
             HciStatus::Failure(m0) => {
-                Ok(())?;
                 m0.to_packet(bytes)?;
                 Ok(())
             }

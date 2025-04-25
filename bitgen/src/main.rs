@@ -63,21 +63,23 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
 
     let enum_name = enum_name.clone();
     let last_variant = variants.last().unwrap();
+    let last_variant_id = get_id_bytes(&last_variant);
     let to_packet = variants.iter().map(|variant| {
         let name = variant.ident.clone();
 
         // Match variant id bytes (&[0x01, 0x02] or _ which is the passthrough)
         let id_bytes_match = match get_id_bytes(variant) {
-            IdBytes::Bytes(id_bytes) => quote! {
+            IdBytes::Bytes(id_bytes) => Some(quote! {
                 bytes.pack_bytes(#id_bytes)
-            },
+            }),
             IdBytes::Passthrough => {
                 if variant.ident != last_variant.ident {
-                    panic!("Passthrough (_) id bytes are only allowed on the last variant");
+                    panic!(
+                        "Passthrough (_) id bytes are only allowed on the last variant '{}'",
+                        last_variant.ident
+                    );
                 }
-                quote! {
-                    Ok(())
-                }
+                None
             }
         };
 
@@ -88,11 +90,19 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
                     .iter()
                     .map(|field| field.ident.as_ref().expect("Expected named fields"))
                     .collect::<Vec<_>>();
+
+                let id_bytes = match id_bytes_match {
+                    Some(id_bytes) => quote! {
+                        #id_bytes?;
+                    },
+                    None => quote! {},
+                };
+
                 quote! {
                     #enum_name::#name {
                         #(#field_names),*
                     } => {
-                        #id_bytes_match?;
+                        #id_bytes
                         #(
                             bytes.pack(#field_names)?;
                         )*
@@ -108,11 +118,18 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
                     .map(|(i, _)| Ident::new(&format!("m{}", i), name.span()))
                     .collect::<Vec<_>>();
 
+                let id_bytes = match id_bytes_match {
+                    Some(id_bytes) => quote! {
+                        #id_bytes?;
+                    },
+                    None => quote! {},
+                };
+
                 quote! {
                     #enum_name::#name(
                         #(#matchers),*
                     ) => {
-                        #id_bytes_match?;
+                        #id_bytes
                         #(
                             #matchers.to_packet(bytes)?;
                         )*
@@ -122,8 +139,17 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
                 }
             }
             Fields::Unit => {
+                let id_bytes = match id_bytes_match {
+                    Some(id_bytes) => quote! {
+                        #id_bytes
+                    },
+                    None => quote! {
+                        Ok(())
+                    },
+                };
+
                 quote! {
-                    #enum_name::#name => #id_bytes_match
+                    #enum_name::#name => #id_bytes
 
                 }
             }
@@ -134,19 +160,7 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
         let name = variant.ident.clone();
 
         // Match variant id bytes (&[0x01, 0x02] or _ which is the passthrough)
-        let id_bytes_match = match get_id_bytes(variant) {
-            IdBytes::Bytes(id_bytes) => quote! {
-                bytes.next_if_eq(#id_bytes)
-            },
-            IdBytes::Passthrough => {
-                if variant.ident != last_variant.ident {
-                    panic!("Passthrough (_) id bytes are only allowed on the last variant");
-                }
-                quote! {
-                    true
-                }
-            }
-        };
+        let id_bytes_match = get_id_bytes(variant);
 
         let make_fields = match &variant.fields {
             Fields::Unnamed(tuple_fields) => {
@@ -190,19 +204,39 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
             }
         };
 
-        quote! {
-            if #id_bytes_match {
-                return Ok(#make_fields);
+        match id_bytes_match {
+            IdBytes::Bytes(id_bytes) => quote! {
+                if bytes.next_if_eq(#id_bytes) {
+                    return Ok(#make_fields);
+                }
+            },
+            IdBytes::Passthrough => {
+                if variant.ident != last_variant.ident {
+                    panic!(
+                        "Passthrough (_) id bytes are only allowed on the last variant '{}'",
+                        last_variant.ident
+                    );
+                }
+                quote! {
+                    return Ok(#make_fields);
+                }
             }
         }
     });
 
-    quote! {
+    let err = if let IdBytes::Passthrough = last_variant_id {
+        quote! {}
+    } else {
+        quote! {
+            Err(PacketError::Unspecified(format!("No matching variant found for {}", stringify!(#enum_name))))
+        }
+    };
 
+    quote! {
         impl FromToPacket for #enum_name {
             fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
                 #(#from_packet)*
-                Err(PacketError::Unspecified(format!("No matching variant found for {}", stringify!(#enum_name))))
+                #err
             }
 
             fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
