@@ -4,29 +4,29 @@ impl FromToPacket for HciEventMsg {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         if bytes.next_if_eq(&[0x3e, 0x13, 0x01]) {
             return Ok(HciEventMsg::LeConnectionComplete {
-                status: <HciStatus>::from_packet(bytes)?,
-                connection_handle: <u16>::from_packet(bytes)?,
-                role: <Role>::from_packet(bytes)?,
-                peer_address_type: <AddressType>::from_packet(bytes)?,
-                peer_address: <[u8; 6]>::from_packet(bytes)?,
-                connection_interval: <u16>::from_packet(bytes)?,
-                peripheral_latency: <u16>::from_packet(bytes)?,
-                supervision_timeout: <u16>::from_packet(bytes)?,
-                central_clock_accuracy: <ClockAccuracy>::from_packet(bytes)?,
+                status: bytes.unpack()?,
+                connection_handle: bytes.unpack()?,
+                role: bytes.unpack()?,
+                peer_address_type: bytes.unpack()?,
+                peer_address: bytes.unpack()?,
+                connection_interval: bytes.unpack()?,
+                peripheral_latency: bytes.unpack()?,
+                supervision_timeout: bytes.unpack()?,
+                central_clock_accuracy: bytes.unpack()?,
             });
         }
         if bytes.next_if_eq(&[0x0E, 0x04]) {
             return Ok(HciEventMsg::CommandComplete {
-                num_hci_command_packets: <u8>::from_packet(bytes)?,
-                command_opcode: <u16>::from_packet(bytes)?,
-                status: <HciStatus>::from_packet(bytes)?,
+                num_hci_command_packets: bytes.unpack()?,
+                command_opcode: bytes.unpack()?,
+                status: bytes.unpack()?,
             });
         }
         if bytes.next_if_eq(&[0x0F, 0x04]) {
             return Ok(HciEventMsg::CommandStatus {
-                status: <HciStatus>::from_packet(bytes)?,
-                num_hci_command_packets: <u8>::from_packet(bytes)?,
-                command_opcode: <u16>::from_packet(bytes)?,
+                status: bytes.unpack()?,
+                num_hci_command_packets: bytes.unpack()?,
+                command_opcode: bytes.unpack()?,
             });
         }
         Err(PacketError::Unspecified(format!(
@@ -48,15 +48,15 @@ impl FromToPacket for HciEventMsg {
                 central_clock_accuracy,
             } => {
                 bytes.pack_bytes(&[0x3e, 0x13, 0x01])?;
-                status.to_packet(bytes)?;
-                connection_handle.to_packet(bytes)?;
-                role.to_packet(bytes)?;
-                peer_address_type.to_packet(bytes)?;
-                peer_address.to_packet(bytes)?;
-                connection_interval.to_packet(bytes)?;
-                peripheral_latency.to_packet(bytes)?;
-                supervision_timeout.to_packet(bytes)?;
-                central_clock_accuracy.to_packet(bytes)?;
+                bytes.pack(status)?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(role)?;
+                bytes.pack(peer_address_type)?;
+                bytes.pack(peer_address)?;
+                bytes.pack(connection_interval)?;
+                bytes.pack(peripheral_latency)?;
+                bytes.pack(supervision_timeout)?;
+                bytes.pack(central_clock_accuracy)?;
                 Ok(())
             }
             HciEventMsg::CommandComplete {
@@ -65,9 +65,9 @@ impl FromToPacket for HciEventMsg {
                 status,
             } => {
                 bytes.pack_bytes(&[0x0E, 0x04])?;
-                num_hci_command_packets.to_packet(bytes)?;
-                command_opcode.to_packet(bytes)?;
-                status.to_packet(bytes)?;
+                bytes.pack(num_hci_command_packets)?;
+                bytes.pack(command_opcode)?;
+                bytes.pack(status)?;
                 Ok(())
             }
             HciEventMsg::CommandStatus {
@@ -76,9 +76,9 @@ impl FromToPacket for HciEventMsg {
                 command_opcode,
             } => {
                 bytes.pack_bytes(&[0x0F, 0x04])?;
-                status.to_packet(bytes)?;
-                num_hci_command_packets.to_packet(bytes)?;
-                command_opcode.to_packet(bytes)?;
+                bytes.pack(status)?;
+                bytes.pack(num_hci_command_packets)?;
+                bytes.pack(command_opcode)?;
                 Ok(())
             }
         }
@@ -90,7 +90,7 @@ impl FromToPacket for HciStatus {
             return Ok(HciStatus::Success);
         }
         if bytes.next_if_eq(&[0x01]) {
-            return Ok(HciStatus::Failure(<u8>::from_packet(bytes)?));
+            return Ok(HciStatus::Failure(bytes.unpack()?));
         }
         Err(PacketError::Unspecified(format!(
             "No matching variant found for {}",
@@ -99,10 +99,7 @@ impl FromToPacket for HciStatus {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            HciStatus::Success => {
-                bytes.pack_bytes(&[0x00])?;
-                Ok(())
-            }
+            HciStatus::Success => bytes.pack_bytes(&[0x00]),
             HciStatus::Failure(m0) => {
                 bytes.pack_bytes(&[0x01])?;
                 m0.to_packet(bytes)?;
@@ -126,14 +123,8 @@ impl FromToPacket for Role {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            Role::Central => {
-                bytes.pack_bytes(&[0])?;
-                Ok(())
-            }
-            Role::Peripheral => {
-                bytes.pack_bytes(&[1])?;
-                Ok(())
-            }
+            Role::Central => bytes.pack_bytes(&[0]),
+            Role::Peripheral => bytes.pack_bytes(&[1]),
         }
     }
 }
@@ -152,14 +143,8 @@ impl FromToPacket for AddressType {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            AddressType::Public => {
-                bytes.pack_bytes(&[0])?;
-                Ok(())
-            }
-            AddressType::Random => {
-                bytes.pack_bytes(&[1])?;
-                Ok(())
-            }
+            AddressType::Public => bytes.pack_bytes(&[0]),
+            AddressType::Random => bytes.pack_bytes(&[1]),
         }
     }
 }
@@ -196,44 +181,20 @@ impl FromToPacket for ClockAccuracy {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            ClockAccuracy::Ppm500 => {
-                bytes.pack_bytes(&[0])?;
-                Ok(())
-            }
-            ClockAccuracy::Ppm250 => {
-                bytes.pack_bytes(&[1])?;
-                Ok(())
-            }
-            ClockAccuracy::Ppm150 => {
-                bytes.pack_bytes(&[2])?;
-                Ok(())
-            }
-            ClockAccuracy::Ppm100 => {
-                bytes.pack_bytes(&[3])?;
-                Ok(())
-            }
-            ClockAccuracy::Ppm75 => {
-                bytes.pack_bytes(&[4])?;
-                Ok(())
-            }
-            ClockAccuracy::Ppm50 => {
-                bytes.pack_bytes(&[5])?;
-                Ok(())
-            }
-            ClockAccuracy::Ppm30 => {
-                bytes.pack_bytes(&[6])?;
-                Ok(())
-            }
-            ClockAccuracy::Ppm20 => {
-                bytes.pack_bytes(&[7])?;
-                Ok(())
-            }
+            ClockAccuracy::Ppm500 => bytes.pack_bytes(&[0]),
+            ClockAccuracy::Ppm250 => bytes.pack_bytes(&[1]),
+            ClockAccuracy::Ppm150 => bytes.pack_bytes(&[2]),
+            ClockAccuracy::Ppm100 => bytes.pack_bytes(&[3]),
+            ClockAccuracy::Ppm75 => bytes.pack_bytes(&[4]),
+            ClockAccuracy::Ppm50 => bytes.pack_bytes(&[5]),
+            ClockAccuracy::Ppm30 => bytes.pack_bytes(&[6]),
+            ClockAccuracy::Ppm20 => bytes.pack_bytes(&[7]),
         }
     }
 }
 impl FromToPacket for ConnectionHandle {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-        Ok(Self(<u16>::from_packet(bytes)?))
+        Ok(Self(bytes.unpack()?))
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         self.0.to_packet(bytes)?;

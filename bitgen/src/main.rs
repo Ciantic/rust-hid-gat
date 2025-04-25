@@ -71,7 +71,7 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
                     } => {
                         bytes.pack_bytes(#id_bytes_)?;
                         #(
-                            #field_names.to_packet(bytes)?;
+                            bytes.pack(#field_names)?;
                         )*
                         Ok(())
                     }
@@ -100,10 +100,8 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
             }
             Fields::Unit => {
                 quote! {
-                    #enum_name::#name => {
-                        bytes.pack_bytes(#id_bytes_)?;
-                        Ok(())
-                    }
+                    #enum_name::#name => bytes.pack_bytes(#id_bytes_)
+
                 }
             }
         }
@@ -126,15 +124,21 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
 
         let make_fields = match &variant.fields {
             Fields::Unnamed(tuple_fields) => {
-                let field_types = tuple_fields
+                let unpacks = tuple_fields
                     .unnamed
                     .iter()
-                    .map(|field| &field.ty)
+                    .map(|_| {
+                        quote! {
+                            bytes.unpack()?
+                        }
+                    })
                     .collect::<Vec<_>>();
-                quote! {
 
+                quote! {
                     #enum_name::#name(
-                        #(<#field_types>::from_packet(bytes)?),*
+                        #(
+                            #unpacks
+                        ),*
                     )
                 }
             }
@@ -144,11 +148,11 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
                     .iter()
                     .map(|field| field.ident.as_ref().expect("Expected named fields"))
                     .collect::<Vec<_>>();
-                let field_types = fields.named.iter().map(|f| &f.ty).collect::<Vec<_>>();
+
                 quote! {
                     #enum_name::#name {
                         #(
-                            #field_names: <#field_types>::from_packet(bytes)?,
+                            #field_names: bytes.unpack()?,
                         )*
                     }
                 }
@@ -202,7 +206,7 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
                         let result = Self {
                             #(
-                                #field_names: <#field_types>::from_packet(bytes)?,
+                                #field_names: bytes.unpack(bytes)?,
                             )*
                         };
                         Ok(result)
@@ -226,13 +230,23 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
                 .map(|i| Lit::new(Literal::usize_unsuffixed(i)))
                 .collect::<Vec<_>>();
 
+            let unpacks = f
+                .unnamed
+                .iter()
+                .map(|_| {
+                    quote! {
+                        bytes.unpack()?
+                    }
+                })
+                .collect::<Vec<_>>();
+
             quote! {
 
                 impl FromToPacket for #struct_name {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
                         Ok(Self(
                             #(
-                                <#field_types>::from_packet(bytes)?
+                                #unpacks
                             ),*
                         ))
                     }
