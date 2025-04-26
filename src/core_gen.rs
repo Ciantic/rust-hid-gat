@@ -10,9 +10,9 @@ impl FromToPacket for H4Packet {
         }
         if bytes.next_if_eq(&[0x02]) {
             return Ok(H4Packet::HciAcl {
-                connection_handle: bytes.unpack()?,
-                pb: bytes.unpack()?,
-                bc: bytes.unpack()?,
+                connection_handle: bytes.set_bits(12).unpack()?,
+                pb: bytes.set_bits(2).unpack()?,
+                bc: bytes.set_bits(2).unpack()?,
                 msg: bytes.unpack()?,
             });
         }
@@ -25,12 +25,12 @@ impl FromToPacket for H4Packet {
         match self {
             H4Packet::HciCommand(m0) => {
                 bytes.pack_bytes(&[0x01])?;
-                m0.to_packet(bytes)?;
+                bytes.pack(m0)?;
                 Ok(())
             }
             H4Packet::HciEvent(m0) => {
                 bytes.pack_bytes(&[0x04])?;
-                m0.to_packet(bytes)?;
+                bytes.pack(m0)?;
                 Ok(())
             }
             H4Packet::HciAcl {
@@ -40,9 +40,9 @@ impl FromToPacket for H4Packet {
                 msg,
             } => {
                 bytes.pack_bytes(&[0x02])?;
-                bytes.pack(connection_handle)?;
-                bytes.pack(pb)?;
-                bytes.pack(bc)?;
+                bytes.set_bits(12).pack(connection_handle)?;
+                bytes.set_bits(2).pack(pb)?;
+                bytes.set_bits(2).pack(bc)?;
                 bytes.pack(msg)?;
                 Ok(())
             }
@@ -300,7 +300,7 @@ impl FromToPacket for HciStatus {
         match self {
             HciStatus::Success => bytes.pack_bytes(&[0x00]),
             HciStatus::Failure(m0) => {
-                m0.to_packet(bytes)?;
+                bytes.pack(m0)?;
                 Ok(())
             }
         }

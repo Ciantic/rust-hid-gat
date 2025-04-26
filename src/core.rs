@@ -6,14 +6,11 @@ pub enum H4Packet {
     HciEvent(HciEventMsg),
     /// id = &[0x02]
     HciAcl {
-        /// size = 16
-        /// bits = (0,11)
+        /// bits = 12
         connection_handle: ConnectionHandle,
-        /// size = 16
-        /// bits = (12,13)
+        /// bits = 2
         pb: PacketBoundaryFlag,
-        /// size = 16
-        /// bits = (14,15)
+        /// bits = 2
         bc: BroadcastFlag,
         msg: AclMessage,
         // len: u16,
@@ -285,6 +282,7 @@ mod tests {
         ];
         let mut packet = Packet::from_slice(&DATA);
         let msg = packet.unpack::<H4Packet>();
+        packet.dump_state();
         println!("{:?}", msg);
     }
 

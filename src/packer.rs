@@ -1,3 +1,5 @@
+use core::num;
+
 /// Set bits from a byte array into a target byte array based on the specified
 /// bit range, assumes little-endian byte order.
 fn set_bits_le(val: &mut [u8], bits: (usize, usize), value: &[u8]) {
@@ -292,19 +294,21 @@ pub enum PacketError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct BitsetInstruction {
-    /// Bits to operate on, in the form (start, end)
-    pub bits: (usize, usize),
+    pub bits: usize,
+    // /// Bits to operate on, in the form (start, end)
+    // pub bits: (usize, usize),
 
-    /// Size of the instruction in bits
-    pub size: usize,
+    // /// Size of the instruction in bits
+    // pub size: usize,
 
-    /// Whether to advance the position after the instruction is executed
-    pub advance: bool,
+    // /// Whether to advance the position after the instruction is executed
+    // pub advance: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct Packet {
     position: usize,
+    bit_position: usize,
     data: Vec<u8>,
     instructions: Vec<BitsetInstruction>,
 }
@@ -319,6 +323,7 @@ impl Packet {
     pub fn new() -> Self {
         Packet {
             position: 0,
+            bit_position: 0,
             data: Vec::new(),
             instructions: Vec::new(),
         }
@@ -327,6 +332,7 @@ impl Packet {
     pub fn from_vec(bytes: Vec<u8>) -> Self {
         Packet {
             position: 0,
+            bit_position: 0,
             data: bytes,
             instructions: Vec::new(),
         }
@@ -335,9 +341,19 @@ impl Packet {
     pub fn from_slice(bytes: &[u8]) -> Self {
         Packet {
             position: 0,
+            bit_position: 0,
             data: bytes.to_vec(),
             instructions: Vec::new(),
         }
+    }
+
+    pub fn dump_state(&self) {
+        println!(
+            "Packet state: position: {}, bit_position: {}",
+            self.position, self.bit_position
+        );
+        println!("Data: {:?}", self.data);
+        println!("Instructions: {:?}", self.instructions);
     }
 
     pub fn get_bytes(&self) -> &[u8] {
@@ -350,21 +366,13 @@ impl Packet {
             return Err(PacketError::NotEnoughBytes);
         }
         self.position += size;
+        self.bit_position = 0;
         Ok(())
     }
 
-    // pub fn peek<T: Sized + FromToPacket>(&mut self) -> Result<T, PacketError> {
-    //     let size = std::mem::size_of::<T>();
-    //     let bytes = &self
-    //         .data
-    //         .get(self.position..self.position + size)
-    //         .ok_or(PacketError::NotEnoughBytes)?;
-    //     let res = T::from_packet(self).map_err(|_| PacketError::InvalidBytes);
-    //     self.position -= size;
-    // }
-
     pub fn rewind(&mut self) {
         self.position = 0;
+        self.bit_position = 0;
     }
 
     pub fn next_if_eq(&mut self, bytes_eq: &[u8]) -> bool {
@@ -373,27 +381,19 @@ impl Packet {
             .get(self.position..self.position + bytes_eq.len())
             .map_or(false, |slice| slice == bytes_eq);
         if v {
+            self.bit_position = 0;
             self.position += bytes_eq.len();
         }
         v
     }
 
-    fn push_instruction(&mut self, instruction: BitsetInstruction) {
-        self.instructions.push(instruction);
-    }
-
-    fn set_bits(&mut self, size: usize, bits: (usize, usize)) -> &mut Self {
+    pub fn set_bits(&mut self, size: usize) -> &mut Self {
         let instruction = BitsetInstruction {
-            bits,
-            size,
-            advance: false,
+            bits: size,
+            // size,
+            // advance: false,
         };
-        self.push_instruction(instruction);
-        self
-    }
-
-    fn set_advance(&mut self, advance: bool) -> &mut Self {
-        self.instructions.last_mut().map(|i| i.advance = advance);
+        self.instructions.push(instruction);
         self
     }
 
@@ -405,49 +405,69 @@ impl Packet {
         bytes.to_packet(self)
     }
 
-    // pub fn pack_with<T: FromToPacket>(
-    //     &mut self,
-    //     bytes: &T,
-    //     bits: (usize, usize),
-    //     advance: bool,
-    // ) -> Result<(), PacketError> {
-    //     self.push_instruction(BitsetInstruction { bits, advance });
-    //     bytes.to_packet(self)
-    // }
-
-    // pub fn unpack_with<T: FromToPacket>(
-    //     &mut self,
-    //     bits: (usize, usize),
-    //     advance: bool,
-    // ) -> Result<T, PacketError> {
-    //     self.push_instruction(BitsetInstruction { bits, advance });
-    //     T::from_packet(self)
-    // }
-
     pub fn pack_bytes<T: AsRef<[u8]>>(&mut self, bytes: T) -> Result<(), PacketError> {
         let bytes = bytes.as_ref();
         if let Some(instruction) = self.instructions.last() {
-            let size = instruction.size / 8;
-            if self.position + size > self.data.len() {
-                self.data.resize(self.position + size, 0);
+            if instruction.bits == 0 {
+                return Err(PacketError::InvalidInstruction);
             }
 
-            // Update old bits with new bits
-            let mut old_bits = self.data[self.position..self.position + size].to_vec();
-            set_bits_le(&mut old_bits, instruction.bits, bytes);
+            // Use instruction.bits as *length* of the instruction
+            let byte_count = (self.bit_position + instruction.bits + 7) / 8;
 
-            // Copy the updated bits back to the data
-            self.data[self.position..self.position + size].copy_from_slice(&old_bits);
-            self.position += if instruction.advance { size } else { 0 };
+            // Resize to accommodate the instruction size
+            if self.data.len() < self.position + byte_count {
+                println!(
+                    "Resizing data from {} to {}",
+                    self.data.len(),
+                    self.position + byte_count
+                );
+                self.data.resize(self.position + byte_count, 0);
+            }
+
+            // Note: bit_position is guaranteed to be 0-7
+            let end_bit = self.bit_position + instruction.bits - 1;
+
+            // Get n-amount of bits from the `bytes` to be stored in the `data` array
+            let input_bytes = get_bits_le(&bytes, (0, instruction.bits - 1));
+            let mut mut_bytes = &mut self.data[self.position..self.position + byte_count];
+            set_bits_le(&mut mut_bytes, (self.bit_position, end_bit), &input_bytes);
+
+            // for i in 0..byte_count {
+            //     let byte_index = self.position + i;
+
+            //     // Calculate the start and end bits for the current byte (zero-indexed)
+            //     let end_bit_in_byte = if i == byte_count - 1 { end_bit % 8 } else { 7 };
+            //     let start_bit_in_byte = if i == 0 { self.bit_position } else { 0 };
+
+            //     // Zero out the bits in the byte (between start_bit and end_bit)
+            //     let mask =
+            //         ((1 << (end_bit_in_byte - start_bit_in_byte + 1)) - 1) << start_bit_in_byte;
+            //     self.data[byte_index] &= !mask;
+
+            //     // Store the section from input_bytes into the data array
+            //     let input_byte = input_bytes[i];
+            //     let input_mask = (1 << (end_bit_in_byte - start_bit_in_byte + 1)) - 1;
+            //     let extracted_bits = input_byte & input_mask;
+            //     self.data[byte_index] |= extracted_bits << start_bit_in_byte;
+            // }
+
+            // Position needs to be updated as many times as full bytes were written
+            self.position += (self.bit_position + instruction.bits) / 8;
+            self.bit_position = (end_bit + 1) % 8;
+
             self.instructions.pop();
         } else {
+            // Normal packing ignores the bit position, and reset it to 0
+            self.bit_position = 0;
+
             let size = bytes.len();
             if self.data.len() < self.position + size {
                 self.data.resize(self.position + size, 0);
             }
 
             // No instruction, just copy the bytes
-            self.data[self.position..self.position + bytes.len()].copy_from_slice(bytes);
+            self.data[self.position..self.position + size].copy_from_slice(bytes);
             self.position += size;
         }
         Ok(())
@@ -455,30 +475,28 @@ impl Packet {
 
     pub fn unpack_bytes(&mut self, size: usize) -> Result<Vec<u8>, PacketError> {
         if let Some(instruction) = self.instructions.last() {
-            if self.position + instruction.size / 8 > self.data.len() {
+            let byte_count = (self.bit_position + instruction.bits + 7) / 8;
+            if self.position + byte_count > self.data.len() {
                 return Err(PacketError::NotEnoughBytes);
             }
-
-            // Pad the data to accommodate the instruction size
-            let mut res_bytes = vec![0_u8; instruction.size / 8];
-            res_bytes.copy_from_slice(
-                &self
-                    .data
-                    .get(self.position..self.position + size.min(instruction.size / 8))
-                    .ok_or(PacketError::NotEnoughBytes)?,
+            let out = get_bits_le(
+                &self.data[self.position..self.position + byte_count],
+                (self.bit_position, self.bit_position + instruction.bits - 1),
             );
 
-            // Extract the bits from the data
-            let bytes = get_bits_le(&res_bytes, instruction.bits);
-            self.position += if instruction.advance { size } else { 0 };
+            // Update the position and bit position
+            let end_bit = self.bit_position + instruction.bits - 1;
+            self.position += (self.bit_position + instruction.bits) / 8;
+            self.bit_position = (end_bit + 1) % 8;
             self.instructions.pop();
-            return Ok(bytes);
+            return Ok(out);
         }
         if self.position + size > self.data.len() {
             return Err(PacketError::NotEnoughBytes);
         }
         // No instruction, just copy the bytes
         let bytes = &self.data[self.position..self.position + size];
+        self.bit_position = 0; // Reset bit position
         self.position += size;
         Ok(bytes.to_vec())
     }
@@ -507,80 +525,80 @@ mod tests {
     }
 
     #[test]
-    fn test_packet_set_bits_small() {
+    fn test_packet_pack_set_bits_small() {
         let mut packet = Packet::new();
-        packet.set_bits(8, (0, 4)).pack::<u128>(&0xAB).unwrap();
+
+        // Set 0-3 bits to 0xB, and pack 4-7 bits to 0xA
+
+        packet.set_bits(4).pack::<u128>(&0xBBBBB).unwrap();
         assert_eq!(packet.get_bytes(), &[0xB]);
+
+        packet.set_bits(4).pack::<u128>(&0xAAAAA).unwrap();
+        assert_eq!(packet.get_bytes(), &[0xAB]);
     }
 
     #[test]
-    fn test_pack_with_set_bits() {
+    fn test_packet_unpack_set_bits_small() {
+        let mut packet = Packet::from_slice(&[0xAB, 0xFF]);
+        assert_eq!(packet.set_bits(4).unpack::<u128>(), Ok(0xB));
+        assert_eq!(packet.set_bits(4).unpack::<u128>(), Ok(0xA));
+        assert_eq!(packet.unpack::<u8>(), Ok(0xFF));
+    }
+
+    #[test]
+    fn test_packet_pack_set_bits_large() {
         let mut packet = Packet::new();
+        packet.set_bits(128).pack::<u8>(&0xbb).unwrap();
+        assert_eq!(
+            packet.get_bytes(),
+            &[0xBB, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
 
-        packet.set_bits(8, (2, 3)).pack::<u8>(&0xff).unwrap();
-        packet
-            .set_bits(8, (6, 77))
-            .set_advance(true)
-            .pack::<u8>(&0xff)
-            .unwrap();
-        assert_eq!(packet.get_bytes(), &[0b1100_1100]);
+        packet.pack::<u8>(&0xAA).unwrap();
+        assert_eq!(
+            packet.get_bytes(),
+            &[0xBB, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xAA]
+        );
+    }
 
-        packet.pack::<u8>(&0xff).unwrap();
-        assert_eq!(packet.get_bytes(), &[0b1100_1100, 0b1111_1111]);
+    #[test]
+    fn test_packet_unpack_set_bits_large() {
+        let mut packet =
+            Packet::from_slice(&[0xBB, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xAA]);
+        assert_eq!(packet.set_bits(128).unpack::<u8>(), Ok(0xBB));
+        assert_eq!(packet.set_bits(8).unpack::<u8>().unwrap(), 0xAA);
+    }
+
+    #[test]
+    fn test_packet_set_bits_then_pack() {
+        let mut packet = Packet::new();
+        packet.set_bits(4).pack::<u128>(&0xBBBBB).unwrap();
+        assert_eq!(packet.get_bytes(), &[0xB]);
+
+        // Notice: set_bits below 8 bits does not advance the position, thus next pack will overwrite the previous one
+
+        packet.pack::<u8>(&0xAA).unwrap();
+        assert_eq!(packet.get_bytes(), &[0xAA]);
     }
 
     #[test]
     fn test_unpack_with_set_bits() {
         let mut packet = Packet::from_slice(&[0b1100_1100, 0b1111_1111]);
-        assert_eq!(packet.set_bits(8, (2, 3)).unpack::<u8>(), Ok(0b0000_0011));
-        assert_eq!(packet.set_bits(8, (0, 3)).unpack::<u8>(), Ok(0b0000_1100));
-        assert_eq!(
-            packet.set_bits(8, (6, 7)).set_advance(true).unpack::<u8>(),
-            Ok(0b0000_0011)
-        );
+        assert_eq!(packet.set_bits(4).unpack::<u8>(), Ok(0b1100));
+        assert_eq!(packet.set_bits(2).unpack::<u8>(), Ok(0b00));
+        assert_eq!(packet.set_bits(2).unpack::<u8>(), Ok(0b11));
         assert_eq!(packet.unpack::<u8>(), Ok(0b1111_1111));
-    }
-
-    #[test]
-    fn test_pack_bluetooth_acl_header() {
-        let connection_handle = 0x040_u16;
-        let pb_flag = 0b_10_u8;
-        let bc_flag = 0b_10_u8;
-
-        let mut packet = Packet::new();
-
-        packet.set_bits(16, (12, 13)).pack::<u8>(&pb_flag).unwrap();
-        packet.set_bits(16, (14, 15)).pack::<u8>(&bc_flag).unwrap();
-        packet
-            .set_bits(8, (0, 11))
-            .pack::<u16>(&connection_handle)
-            .unwrap();
-
-        assert_eq!(packet.get_bytes(), &[0x40, 0b1010_0000]);
-    }
-
-    #[test]
-    fn test_unpack_bluetooth_acl_header() {
-        let mut packet = Packet::from_slice(&[0x40, 0b1010_0000]);
-
-        let pb_flag = packet.set_bits(16, (12, 13)).unpack::<u16>().unwrap();
-        let bc_flag = packet.set_bits(16, (14, 15)).unpack::<u16>().unwrap();
-        let connection_handle = packet.set_bits(16, (0, 11)).unpack::<u16>().unwrap();
-
-        assert_eq!(pb_flag, 0b_10_u16);
-        assert_eq!(bc_flag, 0b_10_u16);
-        assert_eq!(connection_handle, 0x040_u16);
     }
 
     #[test]
     fn test_pack_24bit_field() {
         let mut packet = Packet::new();
         let value: u32 = 0xABCDEF01;
-        packet.set_bits(24, (0, 23)).pack::<u32>(&value).unwrap();
+        packet.set_bits(24).pack::<u32>(&value).unwrap();
         assert_eq!(packet.get_bytes(), &[0x01, 0xEF, 0xCD]);
 
         let mut packet = Packet::from_slice(&[0x01, 0xEF, 0xCD]);
-        let value = packet.set_bits(24, (0, 23)).unpack::<u32>().unwrap();
+        let value = packet.set_bits(24).unpack::<u32>().unwrap();
         assert_eq!(value, 0xCDEF01);
     }
 }

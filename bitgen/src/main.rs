@@ -7,6 +7,7 @@ use std::fs::*;
 use syn;
 use syn::Attribute;
 use syn::Fields;
+use syn::FieldsNamed;
 use syn::Ident;
 use syn::ItemEnum;
 use syn::ItemStruct;
@@ -35,6 +36,53 @@ fn find_attr_by_name(attrs: &Vec<Attribute>, name: &str) -> Option<Expr> {
 
     res
 }
+
+fn get_field_names(fields: &FieldsNamed) -> Vec<&Ident> {
+    fields
+        .named
+        .iter()
+        .map(|field| field.ident.as_ref().expect("Expected named fields"))
+        .collect::<Vec<_>>()
+}
+
+fn get_packer(fields: &FieldsNamed) -> Vec<TokenStream> {
+    fields
+        .named
+        .iter()
+        .map(|field| {
+            let bits = find_attr_by_name(&field.attrs, "bits");
+            match bits {
+                Some(expr) => quote! {
+                    set_bits(#expr).pack
+                },
+                None => quote! {
+                    pack
+                },
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+fn get_unpacker(fields: &FieldsNamed) -> Vec<TokenStream> {
+    fields
+        .named
+        .iter()
+        .map(|field| {
+            let bits = find_attr_by_name(&field.attrs, "bits");
+            match bits {
+                Some(expr) => quote! {
+                    set_bits(#expr).unpack
+                },
+                None => quote! {
+                    unpack
+                },
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+// TODO: Unpacker and packer support for other than Named fields (currently only
+// Named fields are supported)
 
 enum IdBytes {
     Bytes(TokenStream),
@@ -85,11 +133,8 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
 
         match &variant.fields {
             Fields::Named(fields) => {
-                let field_names = fields
-                    .named
-                    .iter()
-                    .map(|field| field.ident.as_ref().expect("Expected named fields"))
-                    .collect::<Vec<_>>();
+                let field_names = get_field_names(fields);
+                let packer = get_packer(fields);
 
                 let id_bytes = match id_bytes_match {
                     Some(id_bytes) => quote! {
@@ -104,7 +149,7 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
                     } => {
                         #id_bytes
                         #(
-                            bytes.pack(#field_names)?;
+                            bytes.#packer(#field_names)?;
                         )*
                         Ok(())
                     }
@@ -131,7 +176,7 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
                     ) => {
                         #id_bytes
                         #(
-                            #matchers.to_packet(bytes)?;
+                            bytes.pack(#matchers)?;
                         )*
                         Ok(())
 
@@ -163,6 +208,18 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
         let id_bytes_match = get_id_bytes(variant);
 
         let make_fields = match &variant.fields {
+            Fields::Named(fields) => {
+                let field_names = get_field_names(fields);
+                let unpacker = get_unpacker(fields);
+
+                quote! {
+                    #enum_name::#name {
+                        #(
+                            #field_names: bytes.#unpacker()?,
+                        )*
+                    }
+                }
+            }
             Fields::Unnamed(tuple_fields) => {
                 let unpacks = tuple_fields
                     .unnamed
@@ -180,21 +237,6 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
                             #unpacks
                         ),*
                     )
-                }
-            }
-            Fields::Named(fields) => {
-                let field_names = fields
-                    .named
-                    .iter()
-                    .map(|field| field.ident.as_ref().expect("Expected named fields"))
-                    .collect::<Vec<_>>();
-
-                quote! {
-                    #enum_name::#name {
-                        #(
-                            #field_names: bytes.unpack()?,
-                        )*
-                    }
                 }
             }
             Fields::Unit => {
@@ -252,11 +294,9 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
     let struct_name = strut.ident.clone();
     match &strut.fields {
         Fields::Named(f) => {
-            let field_names = f
-                .named
-                .iter()
-                .map(|field| field.ident.as_ref().expect("Expected named fields"))
-                .collect::<Vec<_>>();
+            let field_names = get_field_names(f);
+            let packer = get_packer(f);
+            let unpacker = get_unpacker(f);
 
             quote! {
 
@@ -264,7 +304,7 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
                         let result = Self {
                             #(
-                                #field_names: bytes.unpack()?,
+                                #field_names: bytes.#unpacker()?,
                             )*
                         };
                         Ok(result)
@@ -272,8 +312,7 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
 
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         #(
-                            bytes.pack(&self.#field_names)?;
-                            // self.#field_names.to_packet(bytes)?;
+                            bytes.#packer(&self.#field_names)?;
                         )*
                         Ok(())
                     }
