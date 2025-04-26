@@ -1,5 +1,28 @@
 use crate::core::*;
 use crate::packer::*;
+impl FromToPacket for HciCommand {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        if bytes.next_if_eq(&[0x01, 0x0c]) {
+            return Ok(HciCommand::SetEventMask {
+                inquire_complete_event: bytes.unpack()?,
+            });
+        }
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(HciCommand)),
+            ),
+        )
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            HciCommand::SetEventMask { inquire_complete_event } => {
+                bytes.pack_bytes(&[0x01, 0x0c])?;
+                bytes.pack(inquire_complete_event)?;
+                Ok(())
+            }
+        }
+    }
+}
 impl FromToPacket for HciEventMsg {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         if bytes.next_if_eq(&[0x3e, 0x13, 0x01]) {
@@ -29,10 +52,11 @@ impl FromToPacket for HciEventMsg {
                 command_opcode: bytes.unpack()?,
             });
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(HciEventMsg)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(HciEventMsg)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -109,10 +133,11 @@ impl FromToPacket for Role {
         if bytes.next_if_eq(&[1]) {
             return Ok(Role::Peripheral);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(Role)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(Role)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -129,10 +154,11 @@ impl FromToPacket for AddressType {
         if bytes.next_if_eq(&[1]) {
             return Ok(AddressType::Random);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(AddressType)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(AddressType)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -167,10 +193,11 @@ impl FromToPacket for ClockAccuracy {
         if bytes.next_if_eq(&[7]) {
             return Ok(ClockAccuracy::Ppm20);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(ClockAccuracy)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(ClockAccuracy)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {

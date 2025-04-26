@@ -1,6 +1,13 @@
-use deku::prelude::*;
-use facet::{Def, Facet, Field, StructKind};
-use facet_reflect::{HeapValue, Wip};
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HciCommand {
+    /// id = &[0x01, 0x0c]
+    SetEventMask {
+        // event_mask: u64,
+        /// bit = 0
+        /// size = 64
+        inquire_complete_event: bool,
+    },
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HciEventMsg {
