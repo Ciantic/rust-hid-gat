@@ -237,6 +237,15 @@ impl<const T: usize> FromToPacket for [u8; T] {
     }
 }
 
+impl FromToPacket for Vec<u8> {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(bytes.data[bytes.position..].to_vec())
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        bytes.pack_bytes(self.as_slice())
+    }
+}
+
 macro_rules! impl_from_to_bytes {
     ($type:ty, $size:expr) => {
         impl FromToPacket for $type {

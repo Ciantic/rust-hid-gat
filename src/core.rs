@@ -1,11 +1,68 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum H4Packet {
+    /// id = &[0x01]
+    HciCommand(HciCommand),
+    /// id = &[0x04]
+    HciEvent(HciEventMsg),
+    /// id = &[0x02]
+    HciAcl {
+        /// size = 16
+        /// bits = (0,11)
+        connection_handle: ConnectionHandle,
+        /// size = 16
+        /// bits = (12,13)
+        pb: PacketBoundaryFlag,
+        /// size = 16
+        /// bits = (14,15)
+        bc: BroadcastFlag,
+        msg: AclMessage,
+        // len: u16,
+        // data: L2CapMessage,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AclMessage {
+    // Id is:
+    //        +-------------------------------------------+
+    //        | ACL LEN  | L2CAP LEN | L2CAP CID | OPCODE |
+    //        | 2 bytes  | 2 bytes   | 2 bytes   | 1 byte |
+    //        +-------------------------------------------+
+    //
+    /// id = &[0x15, 0x00, 0x11, 0x00, 0x06, 0x00, 0x03]
+    SmpPairingConfirmation { confirm_value: u128 },
+    /// id = &[0x15, 0x00, 0x11, 0x00, 0x06, 0x00, 0x04]
+    SmpPairingRandom { random_value: u128 },
+    /// id = &[0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x01]
+    SmpPairingRequest {
+        io_capability: IOCapability,
+        oob_data_flag: OOBDataFlag,
+        authentication_requirements: AuthenticationRequirements,
+        max_encryption_key_size: u8,
+        initiator_key_distribution: KeyDistributionFlags,
+        responder_key_distribution: KeyDistributionFlags,
+    },
+    /// id = &[0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x02]
+    SmpPairingResponse {
+        io_capability: IOCapability,
+        oob_data_flag: OOBDataFlag,
+        authentication_requirements: AuthenticationRequirements,
+        max_encryption_key_size: u8,
+        initiator_key_distribution: KeyDistributionFlags,
+        responder_key_distribution: KeyDistributionFlags,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HciCommand {
     /// id = &[0x01, 0x0c]
     SetEventMask {
-        // event_mask: u64,
-        /// bit = 0
-        /// size = 64
-        inquire_complete_event: bool,
+        event_mask: u64,
+        // bit = 0
+        // size = 64
+        // inquire_complete_event: bool,
+        // inquiry_result_event: bool,
+        // .. nearly 64 flags .. not worth it
     },
 }
 
@@ -40,6 +97,22 @@ pub enum HciEventMsg {
     // Unreachable,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
+pub enum PacketBoundaryFlag {
+    #[default]
+    FirstNonFlushable = 0b00,
+    Continuation = 0b01,
+    FirstFlushable = 0b10,
+    Deprecated = 0b11,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
+pub enum BroadcastFlag {
+    #[default]
+    PointToPoint = 0b00,
+    BdEdrBroadcast = 0b01,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum HciStatus {
     /// id = &[0x00]
@@ -72,8 +145,69 @@ pub enum ClockAccuracy {
     Ppm20 = 7,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ConnectionHandle(pub u16); // max value 0x0EFF
+
+// SMP
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct KeyDistributionFlags {
+    pub enc_key: bool,
+    pub id_key: bool,
+    pub sign_key: bool,
+    pub link_key: bool,
+    // pub reserved: (bool, bool, bool, bool),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AuthenticationRequirements {
+    pub bonding: bool,
+    pub mitm_protection: bool,
+    pub secure_connections: bool,
+    pub keypress_notification: bool,
+    pub ct2: bool,
+    // pub reserved: (bool, bool),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IOCapability {
+    DisplayOnly = 0x00,
+    DisplayYesNo = 0x01,
+    KeyboardOnly = 0x02,
+    NoInputNoOutput = 0x03,
+    KeyboardDisplay = 0x04,
+    // Reserved(u8),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OOBDataFlag {
+    OobNotAvailable = 0x00,
+    OobAvailable = 0x01,
+    // Reserved(u8),
+}
+
+/// SMP Pairing failures
+///
+/// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-60/out/en/host/security-manager-specification.html#UUID-edc160cf-62e1-c774-f84c-da67aaf4aa50
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SmpPairingFailure {
+    PasskeyEntryFailed = 0x01,
+    OobNotAvailable = 0x02,
+    AuthenticationRequirements = 0x03,
+    ConfirmValueFailed = 0x04,
+    PairingNotSupported = 0x05,
+    EncryptionKeySize = 0x06,
+    CommandNotSupported = 0x07,
+    UnspecifiedReason = 0x08,
+    RepeatedAttempts = 0x09,
+    InvalidParameters = 0x0A,
+    DhKeyCheckFailed = 0x0B,
+    NumericComparisonFailed = 0x0C,
+    BrEdrPairingInProgress = 0x0D,
+    CrossTransportKeyDerivationGenerationNotAllowed = 0x0E,
+    KeyRejected = 0x0F,
+    Busy = 0x10,
+}
 
 #[cfg(test)]
 mod tests {
@@ -140,6 +274,18 @@ mod tests {
 
         // Ensure it can be serialized back to the original bytes
         // assert_eq!(msg.to_bytes().unwrap(), DATA.to_vec());
+    }
+
+    #[test]
+    fn test_pairing_request() {
+        // 02 40 20 0b 00 07 00 06 00 01 04 00 2d 10 0e 0f
+        const DATA: [u8; 16] = [
+            0x02, 0x40, 0x20, 0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x01, 0x04, 0x00, 0x2d, 0x10,
+            0x0e, 0x0f,
+        ];
+        let mut packet = Packet::from_slice(&DATA);
+        let msg = packet.unpack::<H4Packet>();
+        println!("{:?}", msg);
     }
 
     /*

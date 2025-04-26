@@ -264,7 +264,7 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
                         let result = Self {
                             #(
-                                #field_names: bytes.unpack(bytes)?,
+                                #field_names: bytes.unpack()?,
                             )*
                         };
                         Ok(result)
@@ -272,7 +272,8 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
 
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         #(
-                            self.#field_names.to_packet(bytes)?;
+                            bytes.pack(&self.#field_names)?;
+                            // self.#field_names.to_packet(bytes)?;
                         )*
                         Ok(())
                     }
