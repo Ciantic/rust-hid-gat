@@ -149,21 +149,37 @@ pub struct ConnectionHandle(pub u16); // max value 0x0EFF
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct KeyDistributionFlags {
+    /// bits = 1
     pub enc_key: bool,
+
+    /// bits = 1
     pub id_key: bool,
+
+    /// bits = 1
     pub sign_key: bool,
+
+    /// bits = 1
     pub link_key: bool,
-    // pub reserved: (bool, bool, bool, bool),
+
+    /// bits = 4
+    pub _reserved: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AuthenticationRequirements {
+    /// bits = 2
     pub bonding: bool,
+    /// bits = 1
     pub mitm_protection: bool,
+    /// bits = 1
     pub secure_connections: bool,
+    /// bits = 1
     pub keypress_notification: bool,
+    /// bits = 1
     pub ct2: bool,
-    // pub reserved: (bool, bool),
+
+    /// bits = 2
+    pub _reserved: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -274,6 +290,41 @@ mod tests {
     }
 
     #[test]
+    fn test_auth_req() {
+        let m = AuthenticationRequirements {
+            bonding: true,
+            mitm_protection: true,
+            secure_connections: true,
+            keypress_notification: false,
+            ct2: true,
+            _reserved: 0,
+        };
+
+        let mut packet = Packet::new();
+        packet.pack(&m).unwrap();
+        assert_eq!(packet.get_bytes(), vec![0x2d]);
+
+        let mut packet = Packet::from_slice(&[0x2d]);
+        let res_msg = packet.unpack::<AuthenticationRequirements>();
+        assert_eq!(res_msg, Ok(m));
+    }
+
+    #[test]
+    fn test_keydistribution_flags() {
+        let v = KeyDistributionFlags {
+            enc_key: true,
+            id_key: false,
+            sign_key: true,
+            link_key: false,
+            _reserved: 0,
+        };
+
+        let mut packet = Packet::new();
+        packet.pack(&v).unwrap();
+        assert_eq!(packet.get_bytes(), vec![0b0000_0101]);
+    }
+
+    #[test]
     fn test_pairing_request() {
         // 02 40 20 0b 00 07 00 06 00 01 04 00 2d 10 0e 0f
         const DATA: [u8; 16] = [
@@ -281,11 +332,67 @@ mod tests {
             0x0e, 0x0f,
         ];
         let mut packet = Packet::from_slice(&DATA);
-        let msg = packet.unpack::<H4Packet>();
-        packet.dump_state();
-        println!("{:?}", msg);
+        let res_msg = packet.unpack::<H4Packet>();
+        let msg = H4Packet::HciAcl {
+            connection_handle: ConnectionHandle(64),
+            pb: PacketBoundaryFlag::FirstFlushable,
+            bc: BroadcastFlag::PointToPoint,
+            msg: AclMessage::SmpPairingRequest {
+                io_capability: IOCapability::KeyboardDisplay,
+                oob_data_flag: OOBDataFlag::OobNotAvailable,
+                authentication_requirements: AuthenticationRequirements {
+                    bonding: true,
+                    mitm_protection: true,
+                    secure_connections: true,
+                    keypress_notification: false,
+                    ct2: true,
+                    _reserved: 0,
+                },
+                max_encryption_key_size: 16,
+                initiator_key_distribution: KeyDistributionFlags {
+                    enc_key: false,
+                    id_key: true,
+                    sign_key: true,
+                    link_key: true,
+                    _reserved: 0,
+                },
+                responder_key_distribution: KeyDistributionFlags {
+                    enc_key: true,
+                    id_key: true,
+                    sign_key: true,
+                    link_key: true,
+                    _reserved: 0,
+                },
+            },
+        };
+        assert_eq!(res_msg.as_ref(), Ok(&msg));
+
+        // Serializes back to the original bytes
+        let mut packer2 = Packet::new();
+        packer2.pack(&msg).unwrap();
+        let serialized_bytes = packer2.get_bytes();
+        assert_eq!(DATA.to_vec(), serialized_bytes);
     }
 
+    #[test]
+    fn test_pairing_request_2() {
+        const DATA: [u8; 15] = [
+            0x40, 0x20, 0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x01, 0x04, 0x00, 0x2d, 0x10, 0x0e,
+            0x0f,
+        ];
+        let mut packet = Packet::from_slice(&DATA);
+        let h: ConnectionHandle = packet.set_bits(12).unpack().unwrap();
+        println!("{:x?}", h.0);
+
+        let v = packet.set_bits(2).next_if_eq(&[0b10]);
+        println!("{:?}", v);
+
+        // let p: u8 = packet.set_bits(2).unpack().unwrap();
+        // Print binary
+        // println!("{:?}", p);
+        // println!("{:08b}", p);
+        // packet.unpack()
+    }
     /*
     #[test]
     fn test_role() {

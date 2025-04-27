@@ -16,10 +16,11 @@ impl FromToPacket for H4Packet {
                 msg: bytes.unpack()?,
             });
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(H4Packet)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(H4Packet)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -33,12 +34,7 @@ impl FromToPacket for H4Packet {
                 bytes.pack(m0)?;
                 Ok(())
             }
-            H4Packet::HciAcl {
-                connection_handle,
-                pb,
-                bc,
-                msg,
-            } => {
+            H4Packet::HciAcl { connection_handle, pb, bc, msg } => {
                 bytes.pack_bytes(&[0x02])?;
                 bytes.set_bits(12).pack(connection_handle)?;
                 bytes.set_bits(2).pack(pb)?;
@@ -81,10 +77,11 @@ impl FromToPacket for AclMessage {
                 responder_key_distribution: bytes.unpack()?,
             });
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(AclMessage)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(AclMessage)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -142,10 +139,11 @@ impl FromToPacket for HciCommand {
                 event_mask: bytes.unpack()?,
             });
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(HciCommand)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(HciCommand)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -186,10 +184,11 @@ impl FromToPacket for HciEventMsg {
                 command_opcode: bytes.unpack()?,
             });
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(HciEventMsg)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(HciEventMsg)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -255,10 +254,13 @@ impl FromToPacket for PacketBoundaryFlag {
         if bytes.next_if_eq(&[0b11]) {
             return Ok(PacketBoundaryFlag::Deprecated);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(PacketBoundaryFlag)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!(
+                    "No matching variant found for {}", stringify!(PacketBoundaryFlag)
+                ),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -277,10 +279,11 @@ impl FromToPacket for BroadcastFlag {
         if bytes.next_if_eq(&[0b01]) {
             return Ok(BroadcastFlag::BdEdrBroadcast);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(BroadcastFlag)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(BroadcastFlag)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -314,10 +317,11 @@ impl FromToPacket for Role {
         if bytes.next_if_eq(&[1]) {
             return Ok(Role::Peripheral);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(Role)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(Role)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -334,10 +338,11 @@ impl FromToPacket for AddressType {
         if bytes.next_if_eq(&[1]) {
             return Ok(AddressType::Random);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(AddressType)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(AddressType)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -372,10 +377,11 @@ impl FromToPacket for ClockAccuracy {
         if bytes.next_if_eq(&[7]) {
             return Ok(ClockAccuracy::Ppm20);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(ClockAccuracy)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(ClockAccuracy)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -402,38 +408,42 @@ impl FromToPacket for ConnectionHandle {
 impl FromToPacket for KeyDistributionFlags {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         let result = Self {
-            enc_key: bytes.unpack()?,
-            id_key: bytes.unpack()?,
-            sign_key: bytes.unpack()?,
-            link_key: bytes.unpack()?,
+            enc_key: bytes.set_bits(1).unpack()?,
+            id_key: bytes.set_bits(1).unpack()?,
+            sign_key: bytes.set_bits(1).unpack()?,
+            link_key: bytes.set_bits(1).unpack()?,
+            _reserved: bytes.set_bits(4).unpack()?,
         };
         Ok(result)
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-        bytes.pack(&self.enc_key)?;
-        bytes.pack(&self.id_key)?;
-        bytes.pack(&self.sign_key)?;
-        bytes.pack(&self.link_key)?;
+        bytes.set_bits(1).pack(&self.enc_key)?;
+        bytes.set_bits(1).pack(&self.id_key)?;
+        bytes.set_bits(1).pack(&self.sign_key)?;
+        bytes.set_bits(1).pack(&self.link_key)?;
+        bytes.set_bits(4).pack(&self._reserved)?;
         Ok(())
     }
 }
 impl FromToPacket for AuthenticationRequirements {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         let result = Self {
-            bonding: bytes.unpack()?,
-            mitm_protection: bytes.unpack()?,
-            secure_connections: bytes.unpack()?,
-            keypress_notification: bytes.unpack()?,
-            ct2: bytes.unpack()?,
+            bonding: bytes.set_bits(2).unpack()?,
+            mitm_protection: bytes.set_bits(1).unpack()?,
+            secure_connections: bytes.set_bits(1).unpack()?,
+            keypress_notification: bytes.set_bits(1).unpack()?,
+            ct2: bytes.set_bits(1).unpack()?,
+            _reserved: bytes.set_bits(2).unpack()?,
         };
         Ok(result)
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-        bytes.pack(&self.bonding)?;
-        bytes.pack(&self.mitm_protection)?;
-        bytes.pack(&self.secure_connections)?;
-        bytes.pack(&self.keypress_notification)?;
-        bytes.pack(&self.ct2)?;
+        bytes.set_bits(2).pack(&self.bonding)?;
+        bytes.set_bits(1).pack(&self.mitm_protection)?;
+        bytes.set_bits(1).pack(&self.secure_connections)?;
+        bytes.set_bits(1).pack(&self.keypress_notification)?;
+        bytes.set_bits(1).pack(&self.ct2)?;
+        bytes.set_bits(2).pack(&self._reserved)?;
         Ok(())
     }
 }
@@ -454,10 +464,11 @@ impl FromToPacket for IOCapability {
         if bytes.next_if_eq(&[0x04]) {
             return Ok(IOCapability::KeyboardDisplay);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(IOCapability)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(IOCapability)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -477,10 +488,11 @@ impl FromToPacket for OOBDataFlag {
         if bytes.next_if_eq(&[0x01]) {
             return Ok(OOBDataFlag::OobAvailable);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(OOBDataFlag)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(OOBDataFlag)),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -531,7 +543,9 @@ impl FromToPacket for SmpPairingFailure {
             return Ok(SmpPairingFailure::BrEdrPairingInProgress);
         }
         if bytes.next_if_eq(&[0x0E]) {
-            return Ok(SmpPairingFailure::CrossTransportKeyDerivationGenerationNotAllowed);
+            return Ok(
+                SmpPairingFailure::CrossTransportKeyDerivationGenerationNotAllowed,
+            );
         }
         if bytes.next_if_eq(&[0x0F]) {
             return Ok(SmpPairingFailure::KeyRejected);
@@ -539,10 +553,13 @@ impl FromToPacket for SmpPairingFailure {
         if bytes.next_if_eq(&[0x10]) {
             return Ok(SmpPairingFailure::Busy);
         }
-        Err(PacketError::Unspecified(format!(
-            "No matching variant found for {}",
-            stringify!(SmpPairingFailure)
-        )))
+        Err(
+            PacketError::Unspecified(
+                format!(
+                    "No matching variant found for {}", stringify!(SmpPairingFailure)
+                ),
+            ),
+        )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
