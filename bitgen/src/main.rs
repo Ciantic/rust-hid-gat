@@ -3,6 +3,7 @@ use proc_macro2::Literal;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
+use quote::TokenStreamExt;
 use std::fs::*;
 use syn;
 use syn::Attribute;
@@ -51,14 +52,21 @@ fn get_packer(fields: &FieldsNamed) -> Vec<TokenStream> {
         .iter()
         .map(|field| {
             let bits = find_attr_by_name(&field.attrs, "bits");
-            match bits {
-                Some(expr) => quote! {
-                    set_bits(#expr).pack
-                },
-                None => quote! {
-                    pack
-                },
+            let prepend_length = find_attr_by_name(&field.attrs, "prepend_length");
+            let mut ret = quote! {};
+
+            if let Some(expr) = prepend_length {
+                ret.extend(quote! {
+                    pack_length::<#expr>()?.
+                });
             }
+            if let Some(bexpr) = bits {
+                ret.extend(quote! {
+                    set_bits(#bexpr).
+                });
+            }
+            ret.extend(quote! { pack });
+            ret
         })
         .collect::<Vec<_>>()
 }
@@ -69,14 +77,21 @@ fn get_unpacker(fields: &FieldsNamed) -> Vec<TokenStream> {
         .iter()
         .map(|field| {
             let bits = find_attr_by_name(&field.attrs, "bits");
-            match bits {
-                Some(expr) => quote! {
-                    set_bits(#expr).unpack
-                },
-                None => quote! {
-                    unpack
-                },
+            let prepend_length = find_attr_by_name(&field.attrs, "prepend_length");
+            let mut ret = quote! {};
+            if let Some(expr) = prepend_length {
+                ret.extend(quote! {
+                    unpack_length::<#expr>()?.
+                });
             }
+            if let Some(bexpr) = bits {
+                ret.extend(quote! {
+                    set_bits(#bexpr).
+                });
+            }
+
+            ret.extend(quote! { unpack });
+            ret
         })
         .collect::<Vec<_>>()
 }
@@ -90,6 +105,7 @@ enum IdBytes {
 }
 
 fn get_id_bytes(variant: &syn::Variant) -> IdBytes {
+    // Try to find from attribute first
     let id_bytes = find_attr_by_name(&variant.attrs, "id");
     if let Some(expr) = id_bytes {
         if let Expr::Infer(_) = &expr {
@@ -97,6 +113,8 @@ fn get_id_bytes(variant: &syn::Variant) -> IdBytes {
         }
         return IdBytes::Bytes(expr.to_token_stream());
     }
+
+    // Then try to find from discriminant e.g. `enum Bar { Foo = 0x01 }`
     if let Some((_, val)) = &variant.discriminant {
         return IdBytes::Bytes(quote! {
             &[#val]
@@ -105,9 +123,32 @@ fn get_id_bytes(variant: &syn::Variant) -> IdBytes {
     panic!("No id found for variant {:?}", variant.to_token_stream());
 }
 
+/// Add pack_length and unpack_length to the top level struct or enum
+fn add_toplevel_length_prepends(
+    attrs: &Vec<Attribute>,
+    prepend_to_packet: &mut TokenStream,
+    prepend_from_packet: &mut TokenStream,
+) {
+    // parse `prepend = u16` type of doc attribute, and store length position
+    if let Some(expr) = find_attr_by_name(&attrs, "prepend_length") {
+        prepend_to_packet.extend(quote! {
+            bytes.pack_length::<#expr>()?;
+        });
+        prepend_from_packet.extend(quote! {
+            // Intentionally ignores the unpacked length for now
+            bytes.unpack_length::<#expr>()?;
+        });
+    }
+}
+
 fn impl_enum(enu: &ItemEnum) -> TokenStream {
     let enum_name = enu.ident.clone();
     let variants: Vec<&syn::Variant> = enu.variants.iter().collect::<Vec<_>>();
+
+    let mut prepend_to_packet = quote! {};
+    let mut prepend_from_packet = quote! {};
+
+    add_toplevel_length_prepends(&enu.attrs, &mut prepend_to_packet, &mut prepend_from_packet);
 
     let enum_name = enum_name.clone();
     let last_variant = variants.last().unwrap();
@@ -186,7 +227,10 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
             Fields::Unit => {
                 let id_bytes = match id_bytes_match {
                     Some(id_bytes) => quote! {
-                        #id_bytes
+                        {
+                            #id_bytes?;
+                            Ok(())
+                        }
                     },
                     None => quote! {
                         Ok(())
@@ -277,11 +321,13 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
     quote! {
         impl FromToPacket for #enum_name {
             fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                #prepend_from_packet
                 #(#from_packet)*
                 #err
             }
 
             fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+                #prepend_to_packet
                 match self {
                     #(#to_packet),*
                 }
@@ -292,6 +338,16 @@ fn impl_enum(enu: &ItemEnum) -> TokenStream {
 
 fn impl_struct(strut: &ItemStruct) -> TokenStream {
     let struct_name = strut.ident.clone();
+
+    let mut prepend_to_packet = quote! {};
+    let mut prepend_from_packet = quote! {};
+
+    add_toplevel_length_prepends(
+        &strut.attrs,
+        &mut prepend_to_packet,
+        &mut prepend_from_packet,
+    );
+
     match &strut.fields {
         Fields::Named(f) => {
             let field_names = get_field_names(f);
@@ -302,15 +358,19 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
 
                 impl FromToPacket for #struct_name {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                        #prepend_from_packet
                         let result = Self {
                             #(
-                                #field_names: bytes.#unpacker()?,
+                                #field_names: {
+                                    bytes.#unpacker()?
+                                },
                             )*
                         };
                         Ok(result)
                     }
 
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+                        #prepend_to_packet
                         #(
                             bytes.#packer(&self.#field_names)?;
                         )*
@@ -337,6 +397,7 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
             quote! {
                 impl FromToPacket for #struct_name {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                        #prepend_from_packet
                         Ok(Self(
                             #(
                                 #unpacks
@@ -345,6 +406,7 @@ fn impl_struct(strut: &ItemStruct) -> TokenStream {
                     }
 
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+                        #prepend_to_packet
                         #(
                             self.#field_numbers.to_packet(bytes)?;
                         )*

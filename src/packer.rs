@@ -1,4 +1,5 @@
 use core::num;
+use std::collections::{HashMap, HashSet};
 
 /// Set bits from a byte array into a target byte array based on the specified
 /// bit range, assumes little-endian byte order.
@@ -222,7 +223,8 @@ impl FromToPacket for bool {
         Ok(res[0] == 1_u8)
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-        bytes.pack_bytes(&[*self as u8])
+        bytes.pack_bytes(&[*self as u8])?;
+        Ok(())
     }
 }
 
@@ -234,7 +236,8 @@ impl<const T: usize> FromToPacket for [u8; T] {
         Ok(result)
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-        bytes.pack_bytes(&self)
+        bytes.pack_bytes(&self)?;
+        Ok(())
     }
 }
 
@@ -243,7 +246,8 @@ impl FromToPacket for Vec<u8> {
         Ok(bytes.data[bytes.position..].to_vec())
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-        bytes.pack_bytes(self.as_slice())
+        bytes.pack_bytes(self.as_slice())?;
+        Ok(())
     }
 }
 
@@ -263,7 +267,8 @@ macro_rules! impl_from_to_bytes {
                 ))
             }
             fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-                bytes.pack_bytes(self.to_le_bytes())
+                bytes.pack_bytes(self.to_le_bytes())?;
+                Ok(())
             }
         }
     };
@@ -297,11 +302,18 @@ struct BitsetInstruction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+struct LengthPosition {
+    position: usize,
+    bytes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Packet {
     position: usize,
     bit_position: usize,
     data: Vec<u8>,
     instructions: Vec<BitsetInstruction>,
+    length_positions: HashSet<LengthPosition>,
 }
 
 impl AsMut<Packet> for Packet {
@@ -317,6 +329,7 @@ impl Packet {
             bit_position: 0,
             data: Vec::new(),
             instructions: Vec::new(),
+            length_positions: HashSet::new(),
         }
     }
 
@@ -326,6 +339,7 @@ impl Packet {
             bit_position: 0,
             data: bytes,
             instructions: Vec::new(),
+            length_positions: HashSet::new(),
         }
     }
 
@@ -335,6 +349,7 @@ impl Packet {
             bit_position: 0,
             data: bytes.to_vec(),
             instructions: Vec::new(),
+            length_positions: HashSet::new(),
         }
     }
 
@@ -347,7 +362,17 @@ impl Packet {
         println!("Instructions: {:?}", self.instructions);
     }
 
-    pub fn get_bytes(&self) -> &[u8] {
+    pub fn get_bytes(&mut self) -> &[u8] {
+        // TODO: This doesn't need to mutate `data`, it could return a copy of
+        // the data with length positions updated with the values
+        for length_position in &self.length_positions {
+            let length =
+                (self.data.len() - 1) - (length_position.position + length_position.bytes - 1);
+            let len_bytes = length.to_le_bytes();
+            self.data[length_position.position
+                ..length_position.position + length_position.bytes.min(len_bytes.len())]
+                .copy_from_slice(&len_bytes[0..length_position.bytes.min(len_bytes.len())]);
+        }
         &self.data
     }
 
@@ -404,16 +429,44 @@ impl Packet {
         self
     }
 
+    pub fn pack_length<T: FromToPacket + Default>(&mut self) -> Result<&mut Self, PacketError> {
+        // Only allow packing length if no instructions are present
+        if !self.instructions.is_empty() {
+            return Err(PacketError::InvalidInstruction);
+        }
+
+        let bytes = std::mem::size_of::<T>();
+        self.length_positions.insert(LengthPosition {
+            position: self.position,
+            bytes,
+        });
+
+        self.pack_bytes(&vec![0; bytes])?;
+        Ok(self)
+    }
+
+    pub fn unpack_length<T: FromToPacket>(&mut self) -> Result<&mut Self, PacketError> {
+        // Only allow unpacking length if no instructions are present
+        if !self.instructions.is_empty() {
+            return Err(PacketError::InvalidInstruction);
+        }
+
+        // Ignore the length
+        T::from_packet(self)?;
+        Ok(self)
+    }
+
     pub fn unpack<T: FromToPacket>(&mut self) -> Result<T, PacketError> {
         T::from_packet(self)
     }
 
-    pub fn pack<T: FromToPacket>(&mut self, bytes: &T) -> Result<(), PacketError> {
+    pub fn pack<T: FromToPacket>(&mut self, bytes: &T) -> Result<&mut Self, PacketError> {
         println!("Packing type {:?}", std::any::type_name::<T>());
-        bytes.to_packet(self)
+        bytes.to_packet(self)?;
+        Ok(self)
     }
 
-    pub fn pack_bytes<T: AsRef<[u8]>>(&mut self, bytes: T) -> Result<(), PacketError> {
+    pub fn pack_bytes<T: AsRef<[u8]>>(&mut self, bytes: T) -> Result<&mut Self, PacketError> {
         let bytes = bytes.as_ref();
         if let Some(instruction) = self.instructions.last() {
             if instruction.bits == 0 {
@@ -488,10 +541,10 @@ impl Packet {
             println!("Wrote byte count: {}", size);
             self.position += size;
         }
-        Ok(())
+        Ok(self)
     }
 
-    pub fn unpack_bytes(&mut self, size: usize) -> Result<Vec<u8>, PacketError> {
+    fn unpack_bytes(&mut self, size: usize) -> Result<Vec<u8>, PacketError> {
         if let Some(instruction) = self.instructions.last() {
             let byte_count = (self.bit_position + instruction.bits + 7) / 8;
             if self.position + byte_count > self.data.len() {
@@ -606,6 +659,45 @@ mod tests {
         assert_eq!(packet.set_bits(2).unpack::<u8>(), Ok(0b00));
         assert_eq!(packet.set_bits(2).unpack::<u8>(), Ok(0b11));
         assert_eq!(packet.unpack::<u8>(), Ok(0b1111_1111));
+    }
+
+    #[test]
+    fn test_pack_length() {
+        let mut packet = Packet::new();
+        // Length from *current* position to the end of the packet,
+        packet.pack_length::<u8>().unwrap();
+        packet.pack_bytes(&[0xA, 0xB, 0xC]);
+        assert_eq!(packet.get_bytes(), &[0x03, 0xA, 0xB, 0xC]);
+    }
+
+    #[test]
+    fn test_pack_length2() {
+        let mut packet = Packet::new();
+        packet.pack_bytes(&[0x1, 0x2, 0x3]).unwrap();
+
+        // Length from *current* position to the end of the packet
+        packet.pack_length::<u16>().unwrap();
+        packet.pack_bytes(&[0xA, 0xB, 0xC]).unwrap();
+
+        // It should be 3 bytes from the current position to the end of the packet
+        assert_eq!(
+            packet.get_bytes(),
+            &[
+                0x1, 0x2, 0x3, // Prefix
+                0x03, 0x00, // Length
+                0xA, 0xB, 0xC // Data
+            ]
+        );
+    }
+
+    #[test]
+    fn test_unpack_length() {
+        let mut packet = Packet::from_slice(&[0x03, 0xA, 0xB, 0xC]);
+        packet.unpack_length::<u8>().unwrap();
+        let value = packet.unpack::<u8>().unwrap();
+        assert_eq!(value, 0xA);
+
+        assert_eq!(packet.get_bytes(), &[0x3, 0xA, 0xB, 0xC]);
     }
 
     #[test]

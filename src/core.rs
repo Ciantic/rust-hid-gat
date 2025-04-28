@@ -8,13 +8,57 @@ pub enum H4Packet {
     HciAcl {
         /// bits = 12
         connection_handle: ConnectionHandle,
+
         /// bits = 2
         pb: PacketBoundaryFlag,
+
         /// bits = 2
         bc: BroadcastFlag,
-        msg: AclMessage,
-        // len: u16,
-        // data: L2CapMessage,
+
+        /// ACL Data length
+        ///
+        /// prepend_length = u16
+        msg: L2CapMessage,
+    },
+}
+
+/// L2CAP Message
+///
+/// prepend_length = u16
+/// prepend_length_offset = -2
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum L2CapMessage {
+    /// id = &[0x06, 0x00]
+    Smp(SmpPdu),
+    /// id = &[0x04, 0x00]
+    Att,
+    /// id = _
+    Unknown(u16, Vec<u8>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SmpPdu {
+    /// id = &[0x03]
+    SmpPairingConfirmation { confirm_value: u128 },
+    /// id = &[0x04]
+    SmpPairingRandom { random_value: u128 },
+    /// id = &[0x01]
+    SmpPairingRequest {
+        io_capability: IOCapability,
+        oob_data_flag: OOBDataFlag,
+        authentication_requirements: AuthenticationRequirements,
+        max_encryption_key_size: u8,
+        initiator_key_distribution: KeyDistributionFlags,
+        responder_key_distribution: KeyDistributionFlags,
+    },
+    /// id = &[0x02]
+    SmpPairingResponse {
+        io_capability: IOCapability,
+        oob_data_flag: OOBDataFlag,
+        authentication_requirements: AuthenticationRequirements,
+        max_encryption_key_size: u8,
+        initiator_key_distribution: KeyDistributionFlags,
+        responder_key_distribution: KeyDistributionFlags,
     },
 }
 
@@ -52,15 +96,14 @@ pub enum AclMessage {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HciCommand {
+    /// id = &[0x03, 0x0C, 0x00]
+    Reset,
+
     /// id = &[0x01, 0x0c]
-    SetEventMask {
-        event_mask: u64,
-        // bit = 0
-        // size = 64
-        // inquire_complete_event: bool,
-        // inquiry_result_event: bool,
-        // .. nearly 64 flags .. not worth it
-    },
+    SetEventMask { event_mask: u64 },
+
+    /// id = &[0x01, 0x20, 0x08]
+    LeSetEventMask { event_mask: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -337,7 +380,7 @@ mod tests {
             connection_handle: ConnectionHandle(64),
             pb: PacketBoundaryFlag::FirstFlushable,
             bc: BroadcastFlag::PointToPoint,
-            msg: AclMessage::SmpPairingRequest {
+            msg: L2CapMessage::Smp(SmpPdu::SmpPairingRequest {
                 io_capability: IOCapability::KeyboardDisplay,
                 oob_data_flag: OOBDataFlag::OobNotAvailable,
                 authentication_requirements: AuthenticationRequirements {
@@ -363,7 +406,7 @@ mod tests {
                     link_key: true,
                     _reserved: 0,
                 },
-            },
+            }),
         };
         assert_eq!(res_msg.as_ref(), Ok(&msg));
 

@@ -13,7 +13,7 @@ impl FromToPacket for H4Packet {
                 connection_handle: bytes.set_bits(12).unpack()?,
                 pb: bytes.set_bits(2).unpack()?,
                 bc: bytes.set_bits(2).unpack()?,
-                msg: bytes.unpack()?,
+                msg: bytes.unpack_length::<u16>()?.unpack()?,
             });
         }
         Err(
@@ -39,7 +39,125 @@ impl FromToPacket for H4Packet {
                 bytes.set_bits(12).pack(connection_handle)?;
                 bytes.set_bits(2).pack(pb)?;
                 bytes.set_bits(2).pack(bc)?;
-                bytes.pack(msg)?;
+                bytes.pack_length::<u16>()?.pack(msg)?;
+                Ok(())
+            }
+        }
+    }
+}
+impl FromToPacket for L2CapMessage {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        bytes.unpack_length::<u16>()?;
+        if bytes.next_if_eq(&[0x06, 0x00]) {
+            return Ok(L2CapMessage::Smp(bytes.unpack()?));
+        }
+        if bytes.next_if_eq(&[0x04, 0x00]) {
+            return Ok(L2CapMessage::Att);
+        }
+        return Ok(L2CapMessage::Unknown(bytes.unpack()?, bytes.unpack()?));
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        bytes.pack_length::<u16>()?;
+        match self {
+            L2CapMessage::Smp(m0) => {
+                bytes.pack_bytes(&[0x06, 0x00])?;
+                bytes.pack(m0)?;
+                Ok(())
+            }
+            L2CapMessage::Att => {
+                bytes.pack_bytes(&[0x04, 0x00])?;
+                Ok(())
+            }
+            L2CapMessage::Unknown(m0, m1) => {
+                bytes.pack(m0)?;
+                bytes.pack(m1)?;
+                Ok(())
+            }
+        }
+    }
+}
+impl FromToPacket for SmpPdu {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        if bytes.next_if_eq(&[0x03]) {
+            return Ok(SmpPdu::SmpPairingConfirmation {
+                confirm_value: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x04]) {
+            return Ok(SmpPdu::SmpPairingRandom {
+                random_value: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x01]) {
+            return Ok(SmpPdu::SmpPairingRequest {
+                io_capability: bytes.unpack()?,
+                oob_data_flag: bytes.unpack()?,
+                authentication_requirements: bytes.unpack()?,
+                max_encryption_key_size: bytes.unpack()?,
+                initiator_key_distribution: bytes.unpack()?,
+                responder_key_distribution: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x02]) {
+            return Ok(SmpPdu::SmpPairingResponse {
+                io_capability: bytes.unpack()?,
+                oob_data_flag: bytes.unpack()?,
+                authentication_requirements: bytes.unpack()?,
+                max_encryption_key_size: bytes.unpack()?,
+                initiator_key_distribution: bytes.unpack()?,
+                responder_key_distribution: bytes.unpack()?,
+            });
+        }
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(SmpPdu)),
+            ),
+        )
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            SmpPdu::SmpPairingConfirmation { confirm_value } => {
+                bytes.pack_bytes(&[0x03])?;
+                bytes.pack(confirm_value)?;
+                Ok(())
+            }
+            SmpPdu::SmpPairingRandom { random_value } => {
+                bytes.pack_bytes(&[0x04])?;
+                bytes.pack(random_value)?;
+                Ok(())
+            }
+            SmpPdu::SmpPairingRequest {
+                io_capability,
+                oob_data_flag,
+                authentication_requirements,
+                max_encryption_key_size,
+                initiator_key_distribution,
+                responder_key_distribution,
+            } => {
+                bytes.pack_bytes(&[0x01])?;
+                bytes.pack(io_capability)?;
+                bytes.pack(oob_data_flag)?;
+                bytes.pack(authentication_requirements)?;
+                bytes.pack(max_encryption_key_size)?;
+                bytes.pack(initiator_key_distribution)?;
+                bytes.pack(responder_key_distribution)?;
+                Ok(())
+            }
+            SmpPdu::SmpPairingResponse {
+                io_capability,
+                oob_data_flag,
+                authentication_requirements,
+                max_encryption_key_size,
+                initiator_key_distribution,
+                responder_key_distribution,
+            } => {
+                bytes.pack_bytes(&[0x02])?;
+                bytes.pack(io_capability)?;
+                bytes.pack(oob_data_flag)?;
+                bytes.pack(authentication_requirements)?;
+                bytes.pack(max_encryption_key_size)?;
+                bytes.pack(initiator_key_distribution)?;
+                bytes.pack(responder_key_distribution)?;
                 Ok(())
             }
         }
@@ -134,8 +252,16 @@ impl FromToPacket for AclMessage {
 }
 impl FromToPacket for HciCommand {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        if bytes.next_if_eq(&[0x03, 0x0C, 0x00]) {
+            return Ok(HciCommand::Reset);
+        }
         if bytes.next_if_eq(&[0x01, 0x0c]) {
             return Ok(HciCommand::SetEventMask {
+                event_mask: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x01, 0x20, 0x08]) {
+            return Ok(HciCommand::LeSetEventMask {
                 event_mask: bytes.unpack()?,
             });
         }
@@ -147,8 +273,17 @@ impl FromToPacket for HciCommand {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
+            HciCommand::Reset => {
+                bytes.pack_bytes(&[0x03, 0x0C, 0x00])?;
+                Ok(())
+            }
             HciCommand::SetEventMask { event_mask } => {
                 bytes.pack_bytes(&[0x01, 0x0c])?;
+                bytes.pack(event_mask)?;
+                Ok(())
+            }
+            HciCommand::LeSetEventMask { event_mask } => {
+                bytes.pack_bytes(&[0x01, 0x20, 0x08])?;
                 bytes.pack(event_mask)?;
                 Ok(())
             }
@@ -264,10 +399,22 @@ impl FromToPacket for PacketBoundaryFlag {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            PacketBoundaryFlag::FirstNonFlushable => bytes.pack_bytes(&[0b00]),
-            PacketBoundaryFlag::Continuation => bytes.pack_bytes(&[0b01]),
-            PacketBoundaryFlag::FirstFlushable => bytes.pack_bytes(&[0b10]),
-            PacketBoundaryFlag::Deprecated => bytes.pack_bytes(&[0b11]),
+            PacketBoundaryFlag::FirstNonFlushable => {
+                bytes.pack_bytes(&[0b00])?;
+                Ok(())
+            }
+            PacketBoundaryFlag::Continuation => {
+                bytes.pack_bytes(&[0b01])?;
+                Ok(())
+            }
+            PacketBoundaryFlag::FirstFlushable => {
+                bytes.pack_bytes(&[0b10])?;
+                Ok(())
+            }
+            PacketBoundaryFlag::Deprecated => {
+                bytes.pack_bytes(&[0b11])?;
+                Ok(())
+            }
         }
     }
 }
@@ -287,8 +434,14 @@ impl FromToPacket for BroadcastFlag {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            BroadcastFlag::PointToPoint => bytes.pack_bytes(&[0b00]),
-            BroadcastFlag::BdEdrBroadcast => bytes.pack_bytes(&[0b01]),
+            BroadcastFlag::PointToPoint => {
+                bytes.pack_bytes(&[0b00])?;
+                Ok(())
+            }
+            BroadcastFlag::BdEdrBroadcast => {
+                bytes.pack_bytes(&[0b01])?;
+                Ok(())
+            }
         }
     }
 }
@@ -301,7 +454,10 @@ impl FromToPacket for HciStatus {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            HciStatus::Success => bytes.pack_bytes(&[0x00]),
+            HciStatus::Success => {
+                bytes.pack_bytes(&[0x00])?;
+                Ok(())
+            }
             HciStatus::Failure(m0) => {
                 bytes.pack(m0)?;
                 Ok(())
@@ -325,8 +481,14 @@ impl FromToPacket for Role {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            Role::Central => bytes.pack_bytes(&[0]),
-            Role::Peripheral => bytes.pack_bytes(&[1]),
+            Role::Central => {
+                bytes.pack_bytes(&[0])?;
+                Ok(())
+            }
+            Role::Peripheral => {
+                bytes.pack_bytes(&[1])?;
+                Ok(())
+            }
         }
     }
 }
@@ -346,8 +508,14 @@ impl FromToPacket for AddressType {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            AddressType::Public => bytes.pack_bytes(&[0]),
-            AddressType::Random => bytes.pack_bytes(&[1]),
+            AddressType::Public => {
+                bytes.pack_bytes(&[0])?;
+                Ok(())
+            }
+            AddressType::Random => {
+                bytes.pack_bytes(&[1])?;
+                Ok(())
+            }
         }
     }
 }
@@ -385,14 +553,38 @@ impl FromToPacket for ClockAccuracy {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            ClockAccuracy::Ppm500 => bytes.pack_bytes(&[0]),
-            ClockAccuracy::Ppm250 => bytes.pack_bytes(&[1]),
-            ClockAccuracy::Ppm150 => bytes.pack_bytes(&[2]),
-            ClockAccuracy::Ppm100 => bytes.pack_bytes(&[3]),
-            ClockAccuracy::Ppm75 => bytes.pack_bytes(&[4]),
-            ClockAccuracy::Ppm50 => bytes.pack_bytes(&[5]),
-            ClockAccuracy::Ppm30 => bytes.pack_bytes(&[6]),
-            ClockAccuracy::Ppm20 => bytes.pack_bytes(&[7]),
+            ClockAccuracy::Ppm500 => {
+                bytes.pack_bytes(&[0])?;
+                Ok(())
+            }
+            ClockAccuracy::Ppm250 => {
+                bytes.pack_bytes(&[1])?;
+                Ok(())
+            }
+            ClockAccuracy::Ppm150 => {
+                bytes.pack_bytes(&[2])?;
+                Ok(())
+            }
+            ClockAccuracy::Ppm100 => {
+                bytes.pack_bytes(&[3])?;
+                Ok(())
+            }
+            ClockAccuracy::Ppm75 => {
+                bytes.pack_bytes(&[4])?;
+                Ok(())
+            }
+            ClockAccuracy::Ppm50 => {
+                bytes.pack_bytes(&[5])?;
+                Ok(())
+            }
+            ClockAccuracy::Ppm30 => {
+                bytes.pack_bytes(&[6])?;
+                Ok(())
+            }
+            ClockAccuracy::Ppm20 => {
+                bytes.pack_bytes(&[7])?;
+                Ok(())
+            }
         }
     }
 }
@@ -408,11 +600,11 @@ impl FromToPacket for ConnectionHandle {
 impl FromToPacket for KeyDistributionFlags {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         let result = Self {
-            enc_key: bytes.set_bits(1).unpack()?,
-            id_key: bytes.set_bits(1).unpack()?,
-            sign_key: bytes.set_bits(1).unpack()?,
-            link_key: bytes.set_bits(1).unpack()?,
-            _reserved: bytes.set_bits(4).unpack()?,
+            enc_key: { bytes.set_bits(1).unpack()? },
+            id_key: { bytes.set_bits(1).unpack()? },
+            sign_key: { bytes.set_bits(1).unpack()? },
+            link_key: { bytes.set_bits(1).unpack()? },
+            _reserved: { bytes.set_bits(4).unpack()? },
         };
         Ok(result)
     }
@@ -428,12 +620,12 @@ impl FromToPacket for KeyDistributionFlags {
 impl FromToPacket for AuthenticationRequirements {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         let result = Self {
-            bonding: bytes.set_bits(2).unpack()?,
-            mitm_protection: bytes.set_bits(1).unpack()?,
-            secure_connections: bytes.set_bits(1).unpack()?,
-            keypress_notification: bytes.set_bits(1).unpack()?,
-            ct2: bytes.set_bits(1).unpack()?,
-            _reserved: bytes.set_bits(2).unpack()?,
+            bonding: { bytes.set_bits(2).unpack()? },
+            mitm_protection: { bytes.set_bits(1).unpack()? },
+            secure_connections: { bytes.set_bits(1).unpack()? },
+            keypress_notification: { bytes.set_bits(1).unpack()? },
+            ct2: { bytes.set_bits(1).unpack()? },
+            _reserved: { bytes.set_bits(2).unpack()? },
         };
         Ok(result)
     }
@@ -472,11 +664,26 @@ impl FromToPacket for IOCapability {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            IOCapability::DisplayOnly => bytes.pack_bytes(&[0x00]),
-            IOCapability::DisplayYesNo => bytes.pack_bytes(&[0x01]),
-            IOCapability::KeyboardOnly => bytes.pack_bytes(&[0x02]),
-            IOCapability::NoInputNoOutput => bytes.pack_bytes(&[0x03]),
-            IOCapability::KeyboardDisplay => bytes.pack_bytes(&[0x04]),
+            IOCapability::DisplayOnly => {
+                bytes.pack_bytes(&[0x00])?;
+                Ok(())
+            }
+            IOCapability::DisplayYesNo => {
+                bytes.pack_bytes(&[0x01])?;
+                Ok(())
+            }
+            IOCapability::KeyboardOnly => {
+                bytes.pack_bytes(&[0x02])?;
+                Ok(())
+            }
+            IOCapability::NoInputNoOutput => {
+                bytes.pack_bytes(&[0x03])?;
+                Ok(())
+            }
+            IOCapability::KeyboardDisplay => {
+                bytes.pack_bytes(&[0x04])?;
+                Ok(())
+            }
         }
     }
 }
@@ -496,8 +703,14 @@ impl FromToPacket for OOBDataFlag {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            OOBDataFlag::OobNotAvailable => bytes.pack_bytes(&[0x00]),
-            OOBDataFlag::OobAvailable => bytes.pack_bytes(&[0x01]),
+            OOBDataFlag::OobNotAvailable => {
+                bytes.pack_bytes(&[0x00])?;
+                Ok(())
+            }
+            OOBDataFlag::OobAvailable => {
+                bytes.pack_bytes(&[0x01])?;
+                Ok(())
+            }
         }
     }
 }
@@ -563,24 +776,70 @@ impl FromToPacket for SmpPairingFailure {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            SmpPairingFailure::PasskeyEntryFailed => bytes.pack_bytes(&[0x01]),
-            SmpPairingFailure::OobNotAvailable => bytes.pack_bytes(&[0x02]),
-            SmpPairingFailure::AuthenticationRequirements => bytes.pack_bytes(&[0x03]),
-            SmpPairingFailure::ConfirmValueFailed => bytes.pack_bytes(&[0x04]),
-            SmpPairingFailure::PairingNotSupported => bytes.pack_bytes(&[0x05]),
-            SmpPairingFailure::EncryptionKeySize => bytes.pack_bytes(&[0x06]),
-            SmpPairingFailure::CommandNotSupported => bytes.pack_bytes(&[0x07]),
-            SmpPairingFailure::UnspecifiedReason => bytes.pack_bytes(&[0x08]),
-            SmpPairingFailure::RepeatedAttempts => bytes.pack_bytes(&[0x09]),
-            SmpPairingFailure::InvalidParameters => bytes.pack_bytes(&[0x0A]),
-            SmpPairingFailure::DhKeyCheckFailed => bytes.pack_bytes(&[0x0B]),
-            SmpPairingFailure::NumericComparisonFailed => bytes.pack_bytes(&[0x0C]),
-            SmpPairingFailure::BrEdrPairingInProgress => bytes.pack_bytes(&[0x0D]),
-            SmpPairingFailure::CrossTransportKeyDerivationGenerationNotAllowed => {
-                bytes.pack_bytes(&[0x0E])
+            SmpPairingFailure::PasskeyEntryFailed => {
+                bytes.pack_bytes(&[0x01])?;
+                Ok(())
             }
-            SmpPairingFailure::KeyRejected => bytes.pack_bytes(&[0x0F]),
-            SmpPairingFailure::Busy => bytes.pack_bytes(&[0x10]),
+            SmpPairingFailure::OobNotAvailable => {
+                bytes.pack_bytes(&[0x02])?;
+                Ok(())
+            }
+            SmpPairingFailure::AuthenticationRequirements => {
+                bytes.pack_bytes(&[0x03])?;
+                Ok(())
+            }
+            SmpPairingFailure::ConfirmValueFailed => {
+                bytes.pack_bytes(&[0x04])?;
+                Ok(())
+            }
+            SmpPairingFailure::PairingNotSupported => {
+                bytes.pack_bytes(&[0x05])?;
+                Ok(())
+            }
+            SmpPairingFailure::EncryptionKeySize => {
+                bytes.pack_bytes(&[0x06])?;
+                Ok(())
+            }
+            SmpPairingFailure::CommandNotSupported => {
+                bytes.pack_bytes(&[0x07])?;
+                Ok(())
+            }
+            SmpPairingFailure::UnspecifiedReason => {
+                bytes.pack_bytes(&[0x08])?;
+                Ok(())
+            }
+            SmpPairingFailure::RepeatedAttempts => {
+                bytes.pack_bytes(&[0x09])?;
+                Ok(())
+            }
+            SmpPairingFailure::InvalidParameters => {
+                bytes.pack_bytes(&[0x0A])?;
+                Ok(())
+            }
+            SmpPairingFailure::DhKeyCheckFailed => {
+                bytes.pack_bytes(&[0x0B])?;
+                Ok(())
+            }
+            SmpPairingFailure::NumericComparisonFailed => {
+                bytes.pack_bytes(&[0x0C])?;
+                Ok(())
+            }
+            SmpPairingFailure::BrEdrPairingInProgress => {
+                bytes.pack_bytes(&[0x0D])?;
+                Ok(())
+            }
+            SmpPairingFailure::CrossTransportKeyDerivationGenerationNotAllowed => {
+                bytes.pack_bytes(&[0x0E])?;
+                Ok(())
+            }
+            SmpPairingFailure::KeyRejected => {
+                bytes.pack_bytes(&[0x0F])?;
+                Ok(())
+            }
+            SmpPairingFailure::Busy => {
+                bytes.pack_bytes(&[0x10])?;
+                Ok(())
+            }
         }
     }
 }
