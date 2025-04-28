@@ -34,9 +34,14 @@ pub enum FieldDef {
         index: usize,
         ty: Type,
     },
-    Unit {
+    UnitStruct {
         attrs: Vec<Attribute>,
-        ctor_name: Ident,
+        struct_name: Ident,
+    },
+    UnitEnum {
+        attrs: Vec<Attribute>,
+        enum_name: Ident,
+        variant_name: Ident,
     },
 }
 
@@ -104,9 +109,9 @@ pub fn construct(val: &Constructor, cb: fn(&FieldDef) -> TokenStream) -> TokenSt
                     }
                 }
                 Fields::Unit => {
-                    let field_value = cb(&FieldDef::Unit {
+                    let field_value = cb(&FieldDef::UnitStruct {
                         attrs: top_level_attrs,
-                        ctor_name: struct_name.clone(),
+                        struct_name: struct_name.clone(),
                     });
                     quote! {
                         #field_value
@@ -138,8 +143,13 @@ pub fn construct(val: &Constructor, cb: fn(&FieldDef) -> TokenStream) -> TokenSt
                     };
                 }
                 Fields::Unit => {
+                    let field_value = cb(&FieldDef::UnitEnum {
+                        attrs: ienum.attrs.clone(),
+                        enum_name,
+                        variant_name: variant_name.clone(),
+                    });
                     return quote! {
-                        #enum_name::#variant_name
+                        #field_value
                     };
                 }
             }
@@ -151,9 +161,24 @@ pub fn construct(val: &Constructor, cb: fn(&FieldDef) -> TokenStream) -> TokenSt
 mod tests {
     use super::*;
 
-    fn dummy_callback(_field: &FieldDef) -> TokenStream {
-        quote! {
-            foo
+    fn dummy_callback(field: &FieldDef) -> TokenStream {
+        match field {
+            FieldDef::Named { .. } => quote! {
+                named_field
+            },
+            FieldDef::Unnamed { .. } => quote! {
+                unnamed_field
+            },
+            FieldDef::UnitStruct { struct_name, .. } => quote! {
+                #struct_name
+            },
+            FieldDef::UnitEnum {
+                enum_name,
+                variant_name,
+                ..
+            } => quote! {
+                #enum_name::#variant_name
+            },
         }
     }
 
@@ -173,8 +198,8 @@ mod tests {
             constructor.to_string(),
             quote! {
                 MyStruct {
-                    field1: foo,
-                    field2: foo
+                    field1: named_field,
+                    field2: named_field
                 }
             }
             .to_string()
@@ -193,7 +218,7 @@ mod tests {
         assert_eq!(
             constructor.to_string(),
             quote! {
-                MyStruct(foo, foo)
+                MyStruct(unnamed_field, unnamed_field)
             }
             .to_string()
         );
@@ -211,7 +236,7 @@ mod tests {
         assert_eq!(
             constructor.to_string(),
             quote! {
-                foo
+                MyStruct
             }
             .to_string()
         );
@@ -236,11 +261,37 @@ mod tests {
         assert_eq!(
             constructor.to_string(),
             quote! {
-                MyEnum::Variant1 { field1: foo, field2: foo }
+                MyEnum::Variant1 { field1: named_field, field2: named_field }
             }
             .to_string()
         );
     }
+
+    #[test]
+    fn construct_enum_unnamed() {
+        let input = quote! {
+            #[derive(Debug)]
+            enum MyEnum {
+                Variant1 { field1: i32, field2: String },
+                Variant2(u32, String),
+                Variant3
+            }
+        }
+        .to_string();
+        let item: ItemEnum = syn::parse_str(&input).unwrap();
+        let constructor = construct(
+            &Constructor::Enum(item.clone(), item.variants.get(1).unwrap().clone()),
+            dummy_callback,
+        );
+        assert_eq!(
+            constructor.to_string(),
+            quote! {
+                MyEnum::Variant2(unnamed_field, unnamed_field)
+            }
+            .to_string()
+        );
+    }
+
     #[test]
     fn construct_enum_unit() {
         let input = quote! {
@@ -261,30 +312,6 @@ mod tests {
             constructor.to_string(),
             quote! {
                 MyEnum::Variant3
-            }
-            .to_string()
-        );
-    }
-    #[test]
-    fn construct_enum_unnamed() {
-        let input = quote! {
-            #[derive(Debug)]
-            enum MyEnum {
-                Variant1 { field1: i32, field2: String },
-                Variant2(u32, String),
-                Variant3
-            }
-        }
-        .to_string();
-        let item: ItemEnum = syn::parse_str(&input).unwrap();
-        let constructor = construct(
-            &Constructor::Enum(item.clone(), item.variants.get(1).unwrap().clone()),
-            dummy_callback,
-        );
-        assert_eq!(
-            constructor.to_string(),
-            quote! {
-                MyEnum::Variant2(foo, foo)
             }
             .to_string()
         );
