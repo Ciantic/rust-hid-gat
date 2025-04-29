@@ -27,8 +27,8 @@ use crate::common::GenItem;
 
 pub struct DestructurerCbArg {
     // var_name: Ident,
-    type_name: Ident,
-    field: FieldDef,
+    pub type_name: Ident,
+    pub field: FieldDef,
 }
 
 pub struct Destructurer {

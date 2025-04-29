@@ -18,6 +18,7 @@ use syn::{Expr, Meta, MetaNameValue};
 mod common;
 mod construct;
 mod destruct;
+mod implementer;
 
 fn find_attr_by_name(attrs: &Vec<Attribute>, name: &str) -> Option<Expr> {
     let mut res = None;

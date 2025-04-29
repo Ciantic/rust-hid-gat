@@ -20,6 +20,7 @@ use syn::LitInt;
 use syn::Type;
 use syn::{Expr, Meta, MetaNameValue};
 
+#[derive(Clone)]
 pub enum GenItem {
     Struct(syn::ItemStruct),
     Enum(syn::ItemEnum, syn::Variant),

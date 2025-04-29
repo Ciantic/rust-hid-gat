@@ -38,7 +38,8 @@ pub struct Constructor {
     pub item: GenItem,
     pub constructer: fn(&ConstructorCbArg) -> TokenStream,
 }
-fn construct(args: &Constructor) -> TokenStream {
+
+pub fn construct(args: &Constructor) -> TokenStream {
     let item = &args.item;
     let cb = &args.constructer;
 
