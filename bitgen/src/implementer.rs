@@ -1,4 +1,3 @@
-use core::panic;
 use proc_macro2::Literal;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -94,15 +93,21 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                     let mut destructed = Vec::new();
                     let mut constructed = Vec::new();
                     for variant in &ienum.variants {
+                        let variant_name = &variant.ident;
                         let genitem = GenItem::Enum(ienum.clone(), variant.clone());
+                        let constr = construct(&Constructor {
+                            item: genitem.clone(),
+                            constructer: construct_callback,
+                        });
                         destructed.push(destruct(&Destructurer {
                             item: genitem.clone(),
                             destructrurer: destruct_callback,
                         }));
-                        constructed.push(construct(&Constructor {
-                            item: genitem.clone(),
-                            constructer: construct_callback,
-                        }));
+                        constructed.push(quote! {
+                            if stars_are_aligned::<#enum_name::#variant_name>() {
+                                return #constr;
+                            }
+                        });
                     }
 
                     (
@@ -111,7 +116,8 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                             #(#destructed),*
                         },
                         quote! {
-                            #(let a = #constructed;)*
+                            #(#constructed)*
+                            panic!("No matching variant found")
                         },
                     )
                 }
@@ -121,7 +127,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
             Some(quote! {
                 impl Foo for #name {
                     fn from_foo(self) -> #name {
-                        match some {
+                        match self {
                             #destructed
                         }
                     }
@@ -142,9 +148,14 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     fn pretty_string(toks: TokenStream) -> String {
-        let f = syn::parse2(toks).unwrap();
-        let c = prettyplease::unparse(&f);
-        c
+        match syn::parse2(toks.clone()) {
+            Ok(f) => prettyplease::unparse(&f),
+            Err(e) => {
+                println!("Error: {}", e);
+                println!("Unformatted {}", &toks.to_string());
+                panic!("Failed to parse tokens");
+            }
+        }
     }
 
     #[test]
@@ -171,13 +182,12 @@ mod tests {
         let output = quote! {
             #(#output_toks)*
         };
-        println!("Unformatted {}", output.to_string());
         assert_eq!(
             pretty_string(output),
             pretty_string(quote! {
                 impl Foo for MyStruct {
                     fn from_foo(self) -> MyStruct {
-                        match some {
+                        match self {
                             MyStruct { field1, field2 } => {
                                 my_destructor::<i32>(field1)?;
                                 my_destructor::<String>(field2)?;
@@ -194,7 +204,7 @@ mod tests {
 
                 impl Foo for AnotherStruct {
                     fn from_foo(self) -> AnotherStruct {
-                        match some {
+                        match self {
                             AnotherStruct(m0, m1) => {
                                 my_destructor::<u32>(m0)?;
                                 my_destructor::<String>(m1)?;
@@ -208,7 +218,7 @@ mod tests {
 
                 impl Foo for ThirdStruct {
                     fn from_foo(self) -> ThirdStruct {
-                        match some {
+                        match self {
                             ThirdStruct => {
                                 my_destructor::<ThirdStruct>()?;
                             }
@@ -216,6 +226,39 @@ mod tests {
                     }
                     fn to_foo(self) -> ThirdStruct {
                         my_maker::<ThirdStruct>()
+                    }
+                }
+
+                impl Foo for MyEnum {
+                    fn from_foo(self) -> MyEnum {
+                        match self {
+                            MyEnum::NamedVariant { field, field2 } => {
+                                my_destructor::<u32>(field)?;
+                                my_destructor::<String>(field2)?;
+                            }
+                            MyEnum::UnnamedVariant(m0, m1) => {
+                                my_destructor::<u32>(m0)?;
+                                my_destructor::<String>(m1)?;
+                            }
+                            MyEnum::UnitVariant => {
+                                my_destructor::<MyEnum::UnitVariant>()?;
+                            }
+                        }
+                    }
+                    fn to_foo(self) -> MyEnum {
+                        if stars_are_aligned::<MyEnum::NamedVariant>() {
+                            return MyEnum::NamedVariant {
+                                field: my_maker::<u32>(field),
+                                field2: my_maker::<String>(field2),
+                            };
+                        }
+                        if stars_are_aligned::<MyEnum::UnnamedVariant>() {
+                            return MyEnum::UnnamedVariant(my_maker::<u32>(0), my_maker::<String>(1));
+                        }
+                        if stars_are_aligned::<MyEnum::UnitVariant>() {
+                            return my_maker::<MyEnum::UnitVariant>();
+                        }
+                        panic!("No matching variant found")
                     }
                 }
             })
@@ -230,7 +273,7 @@ mod tests {
 
 // impl Foo for MyStruct {
 //     fn from_foo(self) -> MyStruct {
-//         match some {
+//         match self {
 //             MyStruct { field1, field2 } => {
 //                 my_destructor::<i32>(field1)?;
 //                 my_destructor::<String>(field2)?;
@@ -265,7 +308,7 @@ mod tests {
 
 // impl Foo for MyStruct {
 //     fn from_foo(self) -> MyStruct {
-//         match some {
+//         match self {
 //             MyStruct { field1, field2 } => {
 //                 my_destructor::<i32>(field1)?;
 //                 my_destructor::<String>(field2)?;
@@ -281,7 +324,7 @@ mod tests {
 // }
 // impl Foo for AnotherStruct {
 //     fn from_foo(self) -> AnotherStruct {
-//         match some {
+//         match self {
 //             AnotherStruct(m0, m1) => {
 //                 my_destructor::<u32>(m0)?;
 //                 my_destructor::<String>(m1)?;
@@ -294,7 +337,7 @@ mod tests {
 // }
 // impl Foo for ThirdStruct {
 //     fn from_foo(self) -> ThirdStruct {
-//         match some {
+//         match self {
 //             ThirdStruct => {
 //                 my_destructor::<ThirdStruct>()?;
 //             }
@@ -305,4 +348,4 @@ mod tests {
 //     }
 // }
 
-// impl Foo for MyEnum { fn from_foo (self) -> MyEnum { match some { MyEnum :: NamedVariant { field , field2 } => { my_destructor :: < u32 > (field) ? ; my_destructor :: < String > (field2) ? ; } , MyEnum :: UnnamedVariant (m0 , m1) => { my_destructor :: < u32 > (m0) ? ; my_destructor :: < String > (m1) ? ; } , MyEnum :: UnitVariant => { my_destructor :: < MyEnum :: UnitVariant > () ? ; } } } fn to_foo (self) -> MyEnum { MyEnum :: NamedVariant { field : my_maker :: < u32 > (field) , field2 : my_maker :: < String > (field2) },  MyEnum :: UnnamedVariant (my_maker :: < u32 > (0) , my_maker :: < String > (1)) , my_maker :: < MyEnum :: UnitVariant > () } }
+// impl Foo for MyEnum { fn from_foo (self) -> MyEnum { match self { MyEnum :: NamedVariant { field , field2 } => { my_destructor :: < u32 > (field) ? ; my_destructor :: < String > (field2) ? ; } , MyEnum :: UnnamedVariant (m0 , m1) => { my_destructor :: < u32 > (m0) ? ; my_destructor :: < String > (m1) ? ; } , MyEnum :: UnitVariant => { my_destructor :: < MyEnum :: UnitVariant > () ? ; } } } fn to_foo (self) -> MyEnum { MyEnum :: NamedVariant { field : my_maker :: < u32 > (field) , field2 : my_maker :: < String > (field2) },  MyEnum :: UnnamedVariant (my_maker :: < u32 > (0) , my_maker :: < String > (1)) , my_maker :: < MyEnum :: UnitVariant > () } }
