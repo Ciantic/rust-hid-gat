@@ -17,80 +17,48 @@ use syn::Lit;
 use syn::Type;
 use syn::{Expr, Meta, MetaNameValue};
 
-pub enum Constructor {
-    Struct(syn::ItemStruct),
-    Enum(syn::ItemEnum, syn::Variant),
+use crate::common::build_field_defs_named;
+use crate::common::build_field_defs_unnamed;
+use crate::common::get_field_names;
+use crate::common::FieldDef;
+use crate::common::GenItem;
+
+pub struct ConstructorCbArg {
+    /// Name of the new type, e.g. `Foo` in `struct Foo` or `enum Foo`
+    pub type_name: Ident,
+
+    /// Top-level atttributes
+    pub attrs: Vec<Attribute>,
+
+    /// Definition of single field
+    pub field: FieldDef,
 }
 
-pub enum FieldDef {
-    Named {
-        attrs: Vec<Attribute>,
-        index: usize,
-        name: Ident,
-        ty: Type,
-    },
-    Unnamed {
-        attrs: Vec<Attribute>,
-        index: usize,
-        ty: Type,
-    },
-    UnitStruct {
-        attrs: Vec<Attribute>,
-        struct_name: Ident,
-    },
-    UnitEnum {
-        attrs: Vec<Attribute>,
-        enum_name: Ident,
-        variant_name: Ident,
-    },
+pub struct Constructor {
+    pub item: GenItem,
+    pub constructer: fn(&ConstructorCbArg) -> TokenStream,
 }
+fn construct(args: &Constructor) -> TokenStream {
+    let item = &args.item;
+    let cb = &args.constructer;
 
-pub fn construct(val: &Constructor, cb: fn(&FieldDef) -> TokenStream) -> TokenStream {
-    fn get_field_names(fields: &FieldsNamed) -> Vec<&Ident> {
-        fields
-            .named
-            .iter()
-            .map(|field| field.ident.as_ref().expect("Expected named fields"))
-            .collect::<Vec<_>>()
-    }
-
-    fn get_field_defs(fields: &FieldsNamed) -> Vec<FieldDef> {
-        fields
-            .named
-            .iter()
-            .enumerate()
-            .map(|(index, field)| FieldDef::Named {
-                attrs: field.attrs.clone(),
-                index,
-                name: field.ident.clone().expect("Expected named fields"),
-                ty: field.ty.clone(),
-            })
-            .collect::<Vec<_>>()
-    }
-
-    fn get_field_defs_unnamed(fields: &FieldsUnnamed) -> Vec<FieldDef> {
-        fields
-            .unnamed
-            .iter()
-            .enumerate()
-            .map(|(index, field)| FieldDef::Unnamed {
-                attrs: field.attrs.clone(),
-                index,
-                ty: field.ty.clone(),
-            })
-            .collect::<Vec<_>>()
-    }
-
-    match val {
-        Constructor::Struct(istruct) => {
+    match item {
+        GenItem::Struct(istruct) => {
             let top_level_attrs = istruct.attrs.clone();
             let struct_name = istruct.ident.clone();
+            let map_cb = |field: &FieldDef| {
+                cb(&ConstructorCbArg {
+                    attrs: top_level_attrs.clone(),
+                    type_name: struct_name.clone(),
+                    field: field.clone(),
+                })
+            };
 
             match &istruct.fields {
                 Fields::Named(fields) => {
-                    let field_names = get_field_names(&fields);
-                    let field_defs = get_field_defs(&fields);
-                    let field_values = field_defs.iter().map(cb);
+                    let field_defs = build_field_defs_named(&fields);
+                    let field_names = get_field_names(&field_defs);
+                    let field_values = field_defs.iter().map(map_cb);
 
                     quote! {
                         #struct_name {
@@ -99,8 +67,8 @@ pub fn construct(val: &Constructor, cb: fn(&FieldDef) -> TokenStream) -> TokenSt
                     }
                 }
                 Fields::Unnamed(unnamed) => {
-                    let field_defs = get_field_defs_unnamed(unnamed);
-                    let field_values = field_defs.iter().map(cb);
+                    let field_defs = build_field_defs_unnamed(unnamed);
+                    let field_values = field_defs.iter().map(map_cb);
 
                     quote! {
                         #struct_name (
@@ -109,9 +77,10 @@ pub fn construct(val: &Constructor, cb: fn(&FieldDef) -> TokenStream) -> TokenSt
                     }
                 }
                 Fields::Unit => {
-                    let field_value = cb(&FieldDef::UnitStruct {
+                    let field_value = cb(&ConstructorCbArg {
                         attrs: top_level_attrs,
-                        struct_name: struct_name.clone(),
+                        type_name: struct_name.clone(),
+                        field: FieldDef::UnitStruct,
                     });
                     quote! {
                         #field_value
@@ -119,14 +88,21 @@ pub fn construct(val: &Constructor, cb: fn(&FieldDef) -> TokenStream) -> TokenSt
                 }
             }
         }
-        Constructor::Enum(ienum, variant) => {
+        GenItem::Enum(ienum, variant) => {
             let enum_name = ienum.ident.clone();
             let variant_name = variant.ident.clone();
+            let map_cb = |field: &FieldDef| {
+                cb(&ConstructorCbArg {
+                    attrs: ienum.attrs.clone(),
+                    type_name: enum_name.clone(),
+                    field: field.clone(),
+                })
+            };
             match &variant.fields {
                 Fields::Named(fields) => {
-                    let field_names = get_field_names(&fields);
-                    let field_defs = get_field_defs(fields);
-                    let field_values = field_defs.iter().map(cb);
+                    let field_defs = build_field_defs_named(fields);
+                    let field_names = get_field_names(&field_defs);
+                    let field_values = field_defs.iter().map(map_cb);
                     return quote! {
                         #enum_name::#variant_name {
                             #(#field_names : #field_values),*
@@ -134,8 +110,8 @@ pub fn construct(val: &Constructor, cb: fn(&FieldDef) -> TokenStream) -> TokenSt
                     };
                 }
                 Fields::Unnamed(unnamed) => {
-                    let field_defs = get_field_defs_unnamed(unnamed);
-                    let field_values = field_defs.iter().map(cb);
+                    let field_defs = build_field_defs_unnamed(unnamed);
+                    let field_values = field_defs.iter().map(map_cb);
                     return quote! {
                         #enum_name::#variant_name (
                             #(#field_values),*
@@ -143,10 +119,10 @@ pub fn construct(val: &Constructor, cb: fn(&FieldDef) -> TokenStream) -> TokenSt
                     };
                 }
                 Fields::Unit => {
-                    let field_value = cb(&FieldDef::UnitEnum {
+                    let field_value = map_cb(&FieldDef::UnitEnum {
                         attrs: ienum.attrs.clone(),
-                        enum_name,
                         variant_name: variant_name.clone(),
+                        discriminant: variant.discriminant.clone().map(|f| f.1),
                     });
                     return quote! {
                         #field_value
@@ -161,23 +137,25 @@ pub fn construct(val: &Constructor, cb: fn(&FieldDef) -> TokenStream) -> TokenSt
 mod tests {
     use super::*;
 
-    fn dummy_callback(field: &FieldDef) -> TokenStream {
+    fn dummy_callback(arg: &ConstructorCbArg) -> TokenStream {
+        let field = &arg.field;
+        let type_name = &arg.type_name;
         match field {
-            FieldDef::Named { .. } => quote! {
-                named_field
+            FieldDef::Named { name, ty, .. } => quote! {
+                my_maker::<#ty>(#name)
             },
-            FieldDef::Unnamed { .. } => quote! {
-                unnamed_field
+            FieldDef::Unnamed { index, ty, .. } => quote! {
+                my_maker::<#ty>(#index)
             },
-            FieldDef::UnitStruct { struct_name, .. } => quote! {
-                #struct_name
+            FieldDef::UnitStruct => quote! {
+                my_maker::<#type_name>()
             },
             FieldDef::UnitEnum {
-                enum_name,
                 variant_name,
+                discriminant,
                 ..
             } => quote! {
-                #enum_name::#variant_name
+                my_maker::<#type_name::#variant_name>(#discriminant)
             },
         }
     }
@@ -193,13 +171,16 @@ mod tests {
         }
         .to_string();
         let item: ItemStruct = syn::parse_str(&input).unwrap();
-        let constructor = construct(&Constructor::Struct(item), dummy_callback);
+        let constructor = construct(&Constructor {
+            item: GenItem::Struct(item),
+            constructer: dummy_callback,
+        });
         assert_eq!(
             constructor.to_string(),
             quote! {
                 MyStruct {
-                    field1: named_field,
-                    field2: named_field
+                    field1: my_maker::<i32>(field1),
+                    field2: my_maker::<String>(field2)
                 }
             }
             .to_string()
@@ -214,11 +195,17 @@ mod tests {
         }
         .to_string();
         let item: ItemStruct = syn::parse_str(&input).unwrap();
-        let constructor = construct(&Constructor::Struct(item), dummy_callback);
+        let constructor = construct(&Constructor {
+            item: GenItem::Struct(item),
+            constructer: dummy_callback,
+        });
         assert_eq!(
             constructor.to_string(),
             quote! {
-                MyStruct(unnamed_field, unnamed_field)
+                MyStruct(
+                    my_maker::<i32>(0),
+                    my_maker::<String>(1)
+                )
             }
             .to_string()
         );
@@ -232,11 +219,14 @@ mod tests {
         }
         .to_string();
         let item: ItemStruct = syn::parse_str(&input).unwrap();
-        let constructor = construct(&Constructor::Struct(item), dummy_callback);
+        let constructor = construct(&Constructor {
+            item: GenItem::Struct(item),
+            constructer: dummy_callback,
+        });
         assert_eq!(
             constructor.to_string(),
             quote! {
-                MyStruct
+                my_maker::<MyStruct>()
             }
             .to_string()
         );
@@ -248,20 +238,21 @@ mod tests {
             #[derive(Debug)]
             enum MyEnum {
                 Variant1 { field1: i32, field2: String },
-                Variant2(u32, String),
-                Variant3
             }
         }
         .to_string();
         let item: ItemEnum = syn::parse_str(&input).unwrap();
-        let constructor = construct(
-            &Constructor::Enum(item.clone(), item.variants.first().unwrap().clone()),
-            dummy_callback,
-        );
+        let constructor = construct(&Constructor {
+            item: GenItem::Enum(item.clone(), item.variants.first().unwrap().clone()),
+            constructer: dummy_callback,
+        });
         assert_eq!(
             constructor.to_string(),
             quote! {
-                MyEnum::Variant1 { field1: named_field, field2: named_field }
+                MyEnum::Variant1 {
+                    field1: my_maker::<i32>(field1),
+                    field2: my_maker::<String>(field2)
+                }
             }
             .to_string()
         );
@@ -272,21 +263,22 @@ mod tests {
         let input = quote! {
             #[derive(Debug)]
             enum MyEnum {
-                Variant1 { field1: i32, field2: String },
                 Variant2(u32, String),
-                Variant3
             }
         }
         .to_string();
         let item: ItemEnum = syn::parse_str(&input).unwrap();
-        let constructor = construct(
-            &Constructor::Enum(item.clone(), item.variants.get(1).unwrap().clone()),
-            dummy_callback,
-        );
+        let constructor = construct(&Constructor {
+            item: GenItem::Enum(item.clone(), item.variants.last().unwrap().clone()),
+            constructer: dummy_callback,
+        });
         assert_eq!(
             constructor.to_string(),
             quote! {
-                MyEnum::Variant2(unnamed_field, unnamed_field)
+                MyEnum::Variant2(
+                    my_maker::<u32>(0),
+                    my_maker::<String>(1)
+                )
             }
             .to_string()
         );
@@ -297,21 +289,43 @@ mod tests {
         let input = quote! {
             #[derive(Debug)]
             enum MyEnum {
-                Variant1 { field1: i32, field2: String },
-                Variant2(u32, String),
                 Variant3
             }
         }
         .to_string();
         let item: ItemEnum = syn::parse_str(&input).unwrap();
-        let constructor = construct(
-            &Constructor::Enum(item.clone(), item.variants.last().unwrap().clone()),
-            dummy_callback,
-        );
+        let constructor = construct(&Constructor {
+            item: GenItem::Enum(item.clone(), item.variants.last().unwrap().clone()),
+            constructer: dummy_callback,
+        });
         assert_eq!(
             constructor.to_string(),
             quote! {
-                MyEnum::Variant3
+                my_maker::<MyEnum::Variant3>()
+            }
+            .to_string()
+        );
+    }
+    #[test]
+    fn construct_enum_unit_discriminants() {
+        let input = quote! {
+            #[derive(Debug)]
+            enum MyEnum {
+                Choice1 = 1,
+                Choice2 = 2,
+                Choice255 = 0xff
+            }
+        }
+        .to_string();
+        let item: ItemEnum = syn::parse_str(&input).unwrap();
+        let constructor = construct(&Constructor {
+            item: GenItem::Enum(item.clone(), item.variants.last().unwrap().clone()),
+            constructer: dummy_callback,
+        });
+        assert_eq!(
+            constructor.to_string(),
+            quote! {
+                my_maker::<MyEnum::Choice255>(0xff)
             }
             .to_string()
         );

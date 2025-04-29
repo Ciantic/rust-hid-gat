@@ -2,5 +2,11 @@
     "editor.formatOnSave": true,
     "triggerTaskOnSave.tasks": {
         "rsync": ["**/*.*"]
+    },
+    "github.copilot.enable": {
+        "*": true,
+        "plaintext": false,
+        "markdown": false,
+        "scminput": false
     }
 }
