@@ -29,20 +29,20 @@ fn construct_callback(arg: &ConstructorCbArg) -> TokenStream {
     let type_name = &arg.type_name;
     match field {
         FieldDef::Named { name, ty, .. } => quote! {
-            my_maker::<#ty>(#name)
+            foo.my_maker::<#ty>(#name)
         },
         FieldDef::Unnamed { index, ty, .. } => quote! {
-            my_maker::<#ty>(#index)
+            foo.my_maker::<#ty>(#index)
         },
         FieldDef::UnitStruct => quote! {
-            my_maker::<#type_name>()
+            foo.my_maker::<#type_name>()
         },
         FieldDef::UnitEnum {
             variant_name,
             discriminant,
             ..
         } => quote! {
-            my_maker::<#type_name::#variant_name>(#discriminant)
+            foo.my_maker::<#type_name::#variant_name>(#discriminant)
         },
     }
 }
@@ -53,19 +53,19 @@ fn destruct_callback(args: &DestructurerCbArg) -> TokenStream {
     match &args.field {
         FieldDef::Named { name, ty, .. } => {
             quote! {
-                my_destructor::<#ty>(#name)?;
+                foo.my_destructor::<#ty>(#name)?;
             }
         }
         FieldDef::Unnamed { var_match, ty, .. } => {
             quote! {
-                my_destructor::<#ty>(#var_match)?;
+                foo.my_destructor::<#ty>(#var_match)?;
             }
         }
         FieldDef::UnitStruct => quote! {
-            my_destructor::<#type_name>()?;
+            foo.my_destructor::<#type_name>()?;
         },
         FieldDef::UnitEnum { variant_name, .. } => quote! {
-            my_destructor::<#type_name::#variant_name>()?;
+            foo.my_destructor::<#type_name::#variant_name>()?;
         },
     }
 }
@@ -99,10 +99,13 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                             item: genitem.clone(),
                             constructer: construct_callback,
                         });
-                        destructed.push(destruct(&Destructurer {
+                        let destr = destruct(&Destructurer {
                             item: genitem.clone(),
                             destructrurer: destruct_callback,
-                        }));
+                        });
+                        destructed.push(quote! {
+                            #destr
+                        });
                         constructed.push(quote! {
                             if stars_are_aligned::<#enum_name::#variant_name>() {
                                 return #constr;
@@ -125,13 +128,15 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
             };
 
             Some(quote! {
-                impl Foo for #name {
-                    fn from_foo(self) -> #name {
+                impl FromToFoo for #name {
+                    fn to_foo(self) -> Foo {
+                        let foo = Foo::new();
                         match self {
                             #destructed
-                        }
+                        };
+                        foo
                     }
-                    fn to_foo(self) -> #name {
+                    fn from_foo(self, foo: &Foo) -> #name {
                         #constructed
                     }
                 }
@@ -160,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_implementer() {
-        let some_things = quote! {
+        let input_file_contents = quote! {
 
             struct MyStruct {
                 field1: i32,
@@ -177,7 +182,7 @@ mod tests {
                 UnitVariant,
             }
         };
-        let res = syn::parse2::<syn::File>(some_things).unwrap();
+        let res = syn::parse2::<syn::File>(input_file_contents).unwrap();
         let output_toks = implementer(&res.items);
         let output = quote! {
             #(#output_toks)*
@@ -185,78 +190,92 @@ mod tests {
         assert_eq!(
             pretty_string(output),
             pretty_string(quote! {
-                impl Foo for MyStruct {
-                    fn from_foo(self) -> MyStruct {
+                impl FromToFoo for MyStruct {
+                    fn to_foo(self) -> Foo {
+                        let foo = Foo::new();
                         match self {
                             MyStruct { field1, field2 } => {
-                                my_destructor::<i32>(field1)?;
-                                my_destructor::<String>(field2)?;
+                                foo.my_destructor::<i32>(field1)?;
+                                foo.my_destructor::<String>(field2)?;
                             }
-                        }
+                        };
+                        foo
                     }
-                    fn to_foo(self) -> MyStruct {
+                    fn from_foo(self, foo: &Foo) -> MyStruct {
                         MyStruct {
-                            field1: my_maker::<i32>(field1),
-                            field2: my_maker::<String>(field2),
+                            field1: foo.my_maker::<i32>(field1),
+                            field2: foo.my_maker::<String>(field2),
                         }
                     }
                 }
 
-                impl Foo for AnotherStruct {
-                    fn from_foo(self) -> AnotherStruct {
+                impl FromToFoo for AnotherStruct {
+                    fn to_foo(self) -> Foo {
+                        let foo = Foo::new();
                         match self {
                             AnotherStruct(m0, m1) => {
-                                my_destructor::<u32>(m0)?;
-                                my_destructor::<String>(m1)?;
+                                foo.my_destructor::<u32>(m0)?;
+                                foo.my_destructor::<String>(m1)?;
                             }
-                        }
+                        };
+                        foo
                     }
-                    fn to_foo(self) -> AnotherStruct {
-                        AnotherStruct(my_maker::<u32>(0), my_maker::<String>(1))
+                    fn from_foo(self, foo: &Foo) -> AnotherStruct {
+                        AnotherStruct(
+                            foo.my_maker::<u32>(0),
+                            foo.my_maker::<String>(1)
+                        )
                     }
                 }
 
-                impl Foo for ThirdStruct {
-                    fn from_foo(self) -> ThirdStruct {
+                impl FromToFoo for ThirdStruct {
+                    fn to_foo(self) -> Foo {
+                        let foo = Foo::new();
                         match self {
                             ThirdStruct => {
-                                my_destructor::<ThirdStruct>()?;
+                                foo.my_destructor::<ThirdStruct>()?;
                             }
-                        }
+                        };
+                        foo
                     }
-                    fn to_foo(self) -> ThirdStruct {
-                        my_maker::<ThirdStruct>()
+                    fn from_foo(self, foo: &Foo) -> ThirdStruct {
+                        foo.my_maker::<ThirdStruct>()
                     }
                 }
 
-                impl Foo for MyEnum {
-                    fn from_foo(self) -> MyEnum {
+                impl FromToFoo for MyEnum {
+                    fn to_foo(self) -> Foo {
+                        let foo = Foo::new();
                         match self {
                             MyEnum::NamedVariant { field, field2 } => {
-                                my_destructor::<u32>(field)?;
-                                my_destructor::<String>(field2)?;
+                                foo.my_destructor::<u32>(field)?;
+                                foo.my_destructor::<String>(field2)?;
                             }
                             MyEnum::UnnamedVariant(m0, m1) => {
-                                my_destructor::<u32>(m0)?;
-                                my_destructor::<String>(m1)?;
+                                foo.my_destructor::<u32>(m0)?;
+                                foo.my_destructor::<String>(m1)?;
                             }
                             MyEnum::UnitVariant => {
-                                my_destructor::<MyEnum::UnitVariant>()?;
+                                foo.my_destructor::<MyEnum::UnitVariant>()?;
                             }
-                        }
+                        };
+                        foo
                     }
-                    fn to_foo(self) -> MyEnum {
+                    fn from_foo(self, foo: &Foo) -> MyEnum {
                         if stars_are_aligned::<MyEnum::NamedVariant>() {
                             return MyEnum::NamedVariant {
-                                field: my_maker::<u32>(field),
-                                field2: my_maker::<String>(field2),
+                                field: foo.my_maker::<u32>(field),
+                                field2: foo.my_maker::<String>(field2),
                             };
                         }
                         if stars_are_aligned::<MyEnum::UnnamedVariant>() {
-                            return MyEnum::UnnamedVariant(my_maker::<u32>(0), my_maker::<String>(1));
+                            return MyEnum::UnnamedVariant(
+                                foo.my_maker::<u32>(0),
+                                foo.my_maker::<String>(1)
+                            );
                         }
                         if stars_are_aligned::<MyEnum::UnitVariant>() {
-                            return my_maker::<MyEnum::UnitVariant>();
+                            return foo.my_maker::<MyEnum::UnitVariant>();
                         }
                         panic!("No matching variant found")
                     }
@@ -265,87 +284,3 @@ mod tests {
         );
     }
 }
-
-// struct MyStruct {
-//     field1: i32,
-//     field2: String,
-// }
-
-// impl Foo for MyStruct {
-//     fn from_foo(self) -> MyStruct {
-//         match self {
-//             MyStruct { field1, field2 } => {
-//                 my_destructor::<i32>(field1)?;
-//                 my_destructor::<String>(field2)?;
-//             }
-//         }
-//     }
-//     fn to_foo(self) -> MyStruct {
-//         match self {
-//             MyStruct { .. } => { field1 : my_maker :: < i32 > (field1) , field2 : my_maker :: < String > (field2) }
-//         }
-//     }
-// }
-
-// struct MyStruct {
-//     field1: i32,
-//     field2: String,
-// }
-
-// struct AnotherStruct(u32, String);
-
-// struct ThirdStruct;
-
-// enum MyEnum {
-//     NamedVariant { field: u32, field2: String },
-//     UnnamedVariant(u32, String),
-//     UnitVariant,
-// }
-// trait Foo {
-//     fn from_foo(self) -> Self;
-//     fn to_foo(self) -> Self;
-// }
-
-// impl Foo for MyStruct {
-//     fn from_foo(self) -> MyStruct {
-//         match self {
-//             MyStruct { field1, field2 } => {
-//                 my_destructor::<i32>(field1)?;
-//                 my_destructor::<String>(field2)?;
-//             }
-//         }
-//     }
-//     fn to_foo(self) -> MyStruct {
-//         MyStruct {
-//             field1: my_maker::<i32>(field1),
-//             field2: my_maker::<String>(field2),
-//         }
-//     }
-// }
-// impl Foo for AnotherStruct {
-//     fn from_foo(self) -> AnotherStruct {
-//         match self {
-//             AnotherStruct(m0, m1) => {
-//                 my_destructor::<u32>(m0)?;
-//                 my_destructor::<String>(m1)?;
-//             }
-//         }
-//     }
-//     fn to_foo(self) -> AnotherStruct {
-//         AnotherStruct(my_maker::<u32>(0), my_maker::<String>(1))
-//     }
-// }
-// impl Foo for ThirdStruct {
-//     fn from_foo(self) -> ThirdStruct {
-//         match self {
-//             ThirdStruct => {
-//                 my_destructor::<ThirdStruct>()?;
-//             }
-//         }
-//     }
-//     fn to_foo(self) -> ThirdStruct {
-//         my_maker::<ThirdStruct>()
-//     }
-// }
-
-// impl Foo for MyEnum { fn from_foo (self) -> MyEnum { match self { MyEnum :: NamedVariant { field , field2 } => { my_destructor :: < u32 > (field) ? ; my_destructor :: < String > (field2) ? ; } , MyEnum :: UnnamedVariant (m0 , m1) => { my_destructor :: < u32 > (m0) ? ; my_destructor :: < String > (m1) ? ; } , MyEnum :: UnitVariant => { my_destructor :: < MyEnum :: UnitVariant > () ? ; } } } fn to_foo (self) -> MyEnum { MyEnum :: NamedVariant { field : my_maker :: < u32 > (field) , field2 : my_maker :: < String > (field2) },  MyEnum :: UnnamedVariant (my_maker :: < u32 > (0) , my_maker :: < String > (1)) , my_maker :: < MyEnum :: UnitVariant > () } }
