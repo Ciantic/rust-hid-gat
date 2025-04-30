@@ -66,6 +66,7 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                         #struct_name {
                             #(#field_names),*
                         } => {
+                            // TODO: I need to be able to prepend code here, like packing bytes
                             #(#field_values)*
                         }
                     }
@@ -78,6 +79,7 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                         #struct_name(
                             #(#field_matchers),*
                         ) => {
+                            // TODO: I need to be able to prepend code here, like packing bytes
                             #(#field_values)*
                         }
                     }
@@ -91,6 +93,7 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                     });
                     quote! {
                         #struct_name => {
+                            // TODO: I need to be able to prepend code here, like packing bytes
                             #field_value
                         }
                     }
