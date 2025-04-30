@@ -86,6 +86,11 @@ enum IdBytes {
     Passthrough,
 }
 
+/// Parse ID bytes syntax
+/// 
+/// For example `id = &[0x01, 0x02]` results to `IdBytes::Bytes(&[0x01, 0x02])`
+/// or `id = _` results to `IdBytes::Passthrough`
+/// 
 fn get_id_bytes(variant: &syn::Variant) -> IdBytes {
     // Try to find from attribute first
     let id_bytes = find_attr_by_name(&variant.attrs, "id");
@@ -164,7 +169,9 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                         item: genitem.clone(),
                         constructer: construct_callback,
                     });
-                    (struct_name, destructed, constructed)
+                    (struct_name, destructed, quote! {
+                        Ok(#constructed)
+                    })
                 }
                 Item::Enum(ienum) => {
                     let enum_name = &ienum.ident;
@@ -312,11 +319,11 @@ mod tests {
             pretty_string(quote! {
                 impl FromToPacket for MyStruct {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-                        MyStruct {
+                        Ok(MyStruct {
                             field1: bytes.set_bits(12).unpack()?,
                             field2: bytes.set_bits(4).unpack()?,
                             field3: bytes.unpack_length::<u16>()?.unpack()?,
-                        }
+                        })
                     }
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
@@ -331,7 +338,7 @@ mod tests {
                 }
                 impl FromToPacket for AnotherStruct {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-                        AnotherStruct(bytes.unpack()?, bytes.unpack()?)
+                        Ok(AnotherStruct(bytes.unpack()?, bytes.unpack()?))
                     }
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
@@ -347,7 +354,7 @@ mod tests {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
 
                         // Not sure about this?
-                        bytes.unpack::<ThirdStruct>()?
+                        Ok(bytes.unpack::<ThirdStruct>()?)
                     }
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
