@@ -16,6 +16,7 @@ use syn::ItemEnum;
 use syn::ItemStruct;
 use syn::Lit;
 use syn::Type;
+use syn::TypePath;
 use syn::{Expr, Meta, MetaNameValue};
 
 use crate::common::build_field_defs_named;
@@ -27,7 +28,8 @@ use crate::common::GenItem;
 
 pub struct DestructurerCbArg {
     // var_name: Ident,
-    pub type_name: Ident,
+    pub type_name: Type,
+    pub top_level_attrs: Vec<Attribute>,
     pub field: FieldDef,
 }
 
@@ -43,10 +45,14 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
     let cb = &args.destructrurer;
     match &args.item {
         GenItem::Struct(item_struct) => {
-            let struct_name = &item_struct.ident;
+            let struct_name = Type::Path(TypePath {
+                qself: None,
+                path: item_struct.ident.clone().into(),
+            });
             let my_cb = |field: &FieldDef| {
                 cb(&DestructurerCbArg {
-                    type_name: item_struct.ident.clone(),
+                    top_level_attrs: item_struct.attrs.clone(),
+                    type_name: struct_name.clone(),
                     // var_name: var_name.clone(),
                     field: field.clone(),
                 })
@@ -78,7 +84,8 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                 }
                 Fields::Unit => {
                     let field_value = cb(&&DestructurerCbArg {
-                        type_name: item_struct.ident.clone(),
+                        top_level_attrs: item_struct.attrs.clone(),
+                        type_name: struct_name.clone(),
                         // var_name: var_name.clone(),
                         field: FieldDef::UnitStruct,
                     });
@@ -91,10 +98,14 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
             }
         }
         GenItem::Enum(ienum, variant) => {
-            let enum_name = &ienum.ident;
+            let enum_name = Type::Path(TypePath {
+                qself: None,
+                path: ienum.ident.clone().into(),
+            });
             let variant_name = &variant.ident;
             let my_cb = |field: &FieldDef| {
                 cb(&DestructurerCbArg {
+                    top_level_attrs: ienum.attrs.clone(),
                     type_name: enum_name.clone(),
                     // var_name: var_name.clone(),
                     field: field.clone(),
@@ -128,6 +139,7 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                 }
                 Fields::Unit => {
                     let field_value = cb(&DestructurerCbArg {
+                        top_level_attrs: ienum.attrs.clone(),
                         type_name: enum_name.clone(),
                         // var_name: var_name.clone(),
                         field: FieldDef::UnitEnum {

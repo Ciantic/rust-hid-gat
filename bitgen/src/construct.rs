@@ -15,6 +15,7 @@ use syn::ItemEnum;
 use syn::ItemStruct;
 use syn::Lit;
 use syn::Type;
+use syn::TypePath;
 use syn::{Expr, Meta, MetaNameValue};
 
 use crate::common::build_field_defs_named;
@@ -25,10 +26,10 @@ use crate::common::GenItem;
 
 pub struct ConstructorCbArg {
     /// Name of the new type, e.g. `Foo` in `struct Foo` or `enum Foo`
-    pub type_name: Ident,
+    pub type_name: Type,
 
     /// Top-level atttributes
-    pub attrs: Vec<Attribute>,
+    pub top_level_attrs: Vec<Attribute>,
 
     /// Definition of single field
     pub field: FieldDef,
@@ -39,6 +40,9 @@ pub struct Constructor {
     pub constructer: fn(&ConstructorCbArg) -> TokenStream,
 }
 
+/// Constructs the value of the type based on the provided callback
+///
+/// The callback is called for each field of the struct or enum variant.
 pub fn construct(args: &Constructor) -> TokenStream {
     let item = &args.item;
     let cb = &args.constructer;
@@ -46,10 +50,13 @@ pub fn construct(args: &Constructor) -> TokenStream {
     match item {
         GenItem::Struct(istruct) => {
             let top_level_attrs = istruct.attrs.clone();
-            let struct_name = istruct.ident.clone();
+            let struct_name = Type::Path(TypePath {
+                qself: None,
+                path: istruct.ident.clone().into(),
+            });
             let map_cb = |field: &FieldDef| {
                 cb(&ConstructorCbArg {
-                    attrs: top_level_attrs.clone(),
+                    top_level_attrs: top_level_attrs.clone(),
                     type_name: struct_name.clone(),
                     field: field.clone(),
                 })
@@ -79,7 +86,7 @@ pub fn construct(args: &Constructor) -> TokenStream {
                 }
                 Fields::Unit => {
                     let field_value = cb(&ConstructorCbArg {
-                        attrs: top_level_attrs,
+                        top_level_attrs: top_level_attrs,
                         type_name: struct_name.clone(),
                         field: FieldDef::UnitStruct,
                     });
@@ -90,11 +97,14 @@ pub fn construct(args: &Constructor) -> TokenStream {
             }
         }
         GenItem::Enum(ienum, variant) => {
-            let enum_name = ienum.ident.clone();
+            let enum_name = Type::Path(TypePath {
+                qself: None,
+                path: ienum.ident.clone().into(),
+            });
             let variant_name = variant.ident.clone();
             let map_cb = |field: &FieldDef| {
                 cb(&ConstructorCbArg {
-                    attrs: ienum.attrs.clone(),
+                    top_level_attrs: ienum.attrs.clone(),
                     type_name: enum_name.clone(),
                     field: field.clone(),
                 })

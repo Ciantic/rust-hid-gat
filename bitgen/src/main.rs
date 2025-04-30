@@ -19,6 +19,7 @@ mod common;
 mod construct;
 mod destruct;
 mod implementer;
+mod implementer_example;
 
 fn find_attr_by_name(attrs: &Vec<Attribute>, name: &str) -> Option<Expr> {
     let mut res = None;

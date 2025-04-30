@@ -49,6 +49,8 @@ pub enum FieldDef {
     },
 }
 
+// Maybe I should create collection struct and methods to it?
+
 /// Build field definitions for named fields
 pub fn build_field_defs_named(fields: &FieldsNamed) -> Vec<FieldDef> {
     fields
@@ -108,4 +110,25 @@ pub fn get_field_matchers(fields: &Vec<FieldDef>) -> Vec<Ident> {
         .collect::<Vec<_>>()
 }
 
-// Maybe I should create collection struct and methods to it?
+pub fn find_attr_by_name(attrs: &Vec<Attribute>, name: &str) -> Option<Expr> {
+    let mut res = None;
+
+    attrs.iter().for_each(|attr| {
+        let m: &Meta = &attr.meta;
+        if let Meta::NameValue(nmv) = m {
+            if nmv.path.is_ident("doc") {
+                if let Expr::Lit(syn::ExprLit { lit, .. }) = &nmv.value {
+                    if let syn::Lit::Str(lit) = lit {
+                        if let Ok(v) = syn::parse_str::<MetaNameValue>(&lit.value()) {
+                            if v.path.get_ident().is_some_and(|f| f.to_string() == name) {
+                                res = Some(v.value);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    res
+}

@@ -1,4 +1,5 @@
 use proc_macro2::Literal;
+use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
@@ -13,8 +14,10 @@ use syn::Item;
 use syn::ItemEnum;
 use syn::ItemStruct;
 use syn::Lit;
+use syn::Type;
 use syn::{Expr, Meta, MetaNameValue};
 
+use crate::common::find_attr_by_name;
 use crate::common::FieldDef;
 use crate::common::GenItem;
 use crate::construct::construct;
@@ -24,49 +27,98 @@ use crate::destruct::destruct;
 use crate::destruct::Destructurer;
 use crate::destruct::DestructurerCbArg;
 
+/// Build packer tokens
+///
+/// Full example: `bytes.pack_length::<u16>().set_bits(4,6).pack::<MyType>()?`
+fn build_packer(attrs: &Vec<Attribute>, field_name: &Ident) -> TokenStream {
+    let bits = find_attr_by_name(&attrs, "bits");
+    let prepend_length = find_attr_by_name(&attrs, "prepend_length");
+    let mut ret = quote! {
+        bytes
+    };
+
+    if let Some(expr) = prepend_length {
+        ret.extend(quote! {
+            .pack_length::<#expr>()?
+        });
+    }
+    if let Some(bexpr) = bits {
+        ret.extend(quote! {
+            .set_bits(#bexpr)
+        });
+    }
+    ret.extend(quote! { .pack(#field_name)?; });
+    ret
+}
+
+/// Build unpacker tokens
+///
+/// Full example: `bytes.unpack_length::<u16>().set_bits(4,6).unpack::<MyType>()?`
+fn build_unpacker(attrs: &Vec<Attribute>, ty: Option<Type>) -> TokenStream {
+    let bits = find_attr_by_name(&attrs, "bits");
+    let prepend_length = find_attr_by_name(&attrs, "prepend_length");
+    let mut ret = quote! {
+        bytes
+    };
+    if let Some(expr) = prepend_length {
+        ret.extend(quote! {
+            .unpack_length::<#expr>()?
+        });
+    }
+    if let Some(bexpr) = bits {
+        ret.extend(quote! {
+            .set_bits(#bexpr)
+        });
+    }
+
+    ret.extend(quote! { .unpack });
+
+    if let Some(ty) = ty {
+        ret.extend(quote! {::<#ty>()? });
+    } else {
+        ret.extend(quote! {()? });
+    }
+    ret
+}
+
 fn construct_callback(arg: &ConstructorCbArg) -> TokenStream {
     let field = &arg.field;
     let type_name = &arg.type_name;
+    let top_level_attrs = &arg.top_level_attrs;
+
     match field {
-        FieldDef::Named { name, ty, .. } => quote! {
-            foo.my_maker::<#ty>(#name)
-        },
-        FieldDef::Unnamed { index, ty, .. } => quote! {
-            foo.my_maker::<#ty>(#index)
-        },
-        FieldDef::UnitStruct => quote! {
-            foo.my_maker::<#type_name>()
-        },
+        FieldDef::Named { attrs, .. } => build_unpacker(&attrs, None),
+        FieldDef::Unnamed { attrs, .. } => build_unpacker(&attrs, None),
+
+        // I'm not sure about UnitStruct, my use-case doesn't use those yet
+        FieldDef::UnitStruct => build_unpacker(&top_level_attrs, Some(type_name.clone())),
         FieldDef::UnitEnum {
             variant_name,
             discriminant,
+            attrs,
             ..
-        } => quote! {
-            foo.my_maker::<#type_name::#variant_name>(#discriminant)
-        },
+        } => quote! { #type_name::#variant_name },
     }
 }
 
 fn destruct_callback(args: &DestructurerCbArg) -> TokenStream {
     // let var_name = &args.var_name;
-    let type_name = &args.type_name;
+    // let type_name = &args.type_name;
+    let top_level_attrs = &args.top_level_attrs;
+
     match &args.field {
-        FieldDef::Named { name, ty, .. } => {
-            quote! {
-                foo.my_destructor::<#ty>(#name)?;
-            }
+        FieldDef::Named { attrs, name, .. } => build_packer(attrs, name),
+        FieldDef::Unnamed {
+            attrs, var_match, ..
+        } => build_packer(attrs, var_match),
+        FieldDef::UnitStruct => {
+            build_packer(&top_level_attrs, &Ident::new("self", Span::call_site()))
         }
-        FieldDef::Unnamed { var_match, ty, .. } => {
-            quote! {
-                foo.my_destructor::<#ty>(#var_match)?;
-            }
-        }
-        FieldDef::UnitStruct => quote! {
-            foo.my_destructor::<#type_name>()?;
-        },
-        FieldDef::UnitEnum { variant_name, .. } => quote! {
-            foo.my_destructor::<#type_name::#variant_name>()?;
-        },
+        FieldDef::UnitEnum {
+            variant_name,
+            attrs,
+            ..
+        } => build_packer(attrs, variant_name),
     }
 }
 
@@ -107,7 +159,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                             #destr
                         });
                         constructed.push(quote! {
-                            if stars_are_aligned::<#enum_name::#variant_name>() {
+                            if bytes.next_if_eq(&[0x01,0x01,0x01]) {
                                 return #constr;
                             }
                         });
@@ -116,11 +168,15 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                     (
                         enum_name,
                         quote! {
-                            #(#destructed),*
+                            #(#destructed)*
                         },
                         quote! {
-                            #(#constructed)*
-                            panic!("No matching variant found")
+                            #(#constructed);*
+                            Err(
+                                PacketError::Unspecified(
+                                    format!("No matching variant found for {}", stringify!(H4Packet)),
+                                ),
+                            )
                         },
                     )
                 }
@@ -128,16 +184,15 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
             };
 
             Some(quote! {
-                impl FromToFoo for #name {
-                    fn to_foo(self) -> Foo {
-                        let foo = Foo::new();
+                impl FromToPacket for #name {
+                    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                        #constructed
+                    }
+                    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
                             #destructed
                         };
-                        foo
-                    }
-                    fn from_foo(self, foo: &Foo) -> #name {
-                        #constructed
+                        Ok(())
                     }
                 }
             })
@@ -190,94 +245,87 @@ mod tests {
         assert_eq!(
             pretty_string(output),
             pretty_string(quote! {
-                impl FromToFoo for MyStruct {
-                    fn to_foo(self) -> Foo {
-                        let foo = Foo::new();
+                impl FromToPacket for MyStruct {
+                    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                        MyStruct {
+                            field1: bytes.unpack()?,
+                            field2: bytes.unpack()?,
+                        }
+                    }
+                    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
                             MyStruct { field1, field2 } => {
-                                foo.my_destructor::<i32>(field1)?;
-                                foo.my_destructor::<String>(field2)?;
+                                bytes.pack(field1)?;
+                                bytes.pack(field2)?;
                             }
                         };
-                        foo
-                    }
-                    fn from_foo(self, foo: &Foo) -> MyStruct {
-                        MyStruct {
-                            field1: foo.my_maker::<i32>(field1),
-                            field2: foo.my_maker::<String>(field2),
-                        }
+                        Ok(())
                     }
                 }
-
-                impl FromToFoo for AnotherStruct {
-                    fn to_foo(self) -> Foo {
-                        let foo = Foo::new();
+                impl FromToPacket for AnotherStruct {
+                    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                        AnotherStruct(bytes.unpack()?, bytes.unpack()?)
+                    }
+                    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
                             AnotherStruct(m0, m1) => {
-                                foo.my_destructor::<u32>(m0)?;
-                                foo.my_destructor::<String>(m1)?;
+                                bytes.pack(m0)?;
+                                bytes.pack(m1)?;
                             }
                         };
-                        foo
-                    }
-                    fn from_foo(self, foo: &Foo) -> AnotherStruct {
-                        AnotherStruct(
-                            foo.my_maker::<u32>(0),
-                            foo.my_maker::<String>(1)
-                        )
+                        Ok(())
                     }
                 }
+                impl FromToPacket for ThirdStruct {
+                    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
 
-                impl FromToFoo for ThirdStruct {
-                    fn to_foo(self) -> Foo {
-                        let foo = Foo::new();
+                        // Not sure about this?
+                        bytes.unpack::<ThirdStruct>()?
+                    }
+                    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
                             ThirdStruct => {
-                                foo.my_destructor::<ThirdStruct>()?;
+                                bytes.pack(self)?;
                             }
                         };
-                        foo
-                    }
-                    fn from_foo(self, foo: &Foo) -> ThirdStruct {
-                        foo.my_maker::<ThirdStruct>()
+                        Ok(())
                     }
                 }
-
-                impl FromToFoo for MyEnum {
-                    fn to_foo(self) -> Foo {
-                        let foo = Foo::new();
-                        match self {
-                            MyEnum::NamedVariant { field, field2 } => {
-                                foo.my_destructor::<u32>(field)?;
-                                foo.my_destructor::<String>(field2)?;
-                            }
-                            MyEnum::UnnamedVariant(m0, m1) => {
-                                foo.my_destructor::<u32>(m0)?;
-                                foo.my_destructor::<String>(m1)?;
-                            }
-                            MyEnum::UnitVariant => {
-                                foo.my_destructor::<MyEnum::UnitVariant>()?;
-                            }
-                        };
-                        foo
-                    }
-                    fn from_foo(self, foo: &Foo) -> MyEnum {
-                        if stars_are_aligned::<MyEnum::NamedVariant>() {
+                impl FromToPacket for MyEnum {
+                    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                        if bytes.next_if_eq(&[0x01, 0x01, 0x01]) {
                             return MyEnum::NamedVariant {
-                                field: foo.my_maker::<u32>(field),
-                                field2: foo.my_maker::<String>(field2),
+                                field: bytes.unpack()?,
+                                field2: bytes.unpack()?,
                             };
                         }
-                        if stars_are_aligned::<MyEnum::UnnamedVariant>() {
-                            return MyEnum::UnnamedVariant(
-                                foo.my_maker::<u32>(0),
-                                foo.my_maker::<String>(1)
-                            );
+                        if bytes.next_if_eq(&[0x01, 0x01, 0x01]) {
+                            return MyEnum::UnnamedVariant(bytes.unpack()?, bytes.unpack()?);
                         }
-                        if stars_are_aligned::<MyEnum::UnitVariant>() {
-                            return foo.my_maker::<MyEnum::UnitVariant>();
+                        if bytes.next_if_eq(&[0x01, 0x01, 0x01]) {
+                            return MyEnum::UnitVariant;
                         }
-                        panic!("No matching variant found")
+                        Err(
+                            PacketError::Unspecified(
+                                format!("No matching variant found for {}", stringify!(H4Packet)),
+                            ),
+                        )
+                    }
+                    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+                        match self {
+                            MyEnum::NamedVariant { field, field2 } => {
+                                bytes.pack(field)?;
+                                bytes.pack(field2)?;
+                            },
+                            MyEnum::UnnamedVariant(m0, m1) => {
+                                bytes.pack(m0)?;
+                                bytes.pack(m1)?;
+                            },
+                            MyEnum::UnitVariant => {
+                                bytes.pack(UnitVariant)?;
+                            }
+                        };
+                        Ok(())
                     }
                 }
             })
