@@ -27,22 +27,63 @@ use crate::destruct::destruct;
 use crate::destruct::Destructurer;
 use crate::destruct::DestructurerCbArg;
 
-/// Build packer tokens
+/// Build object (struct or enum) packer tokens
+fn build_object_unpacker(attrs: &Vec<Attribute>) -> TokenStream {
+    // TOOD: Id bytes 
+    let mut ret = quote! {};
+    if let Some(expr) = find_attr_by_name(&attrs, "prepend_length") {
+        ret.extend(quote! {
+            bytes.unpack_length::<#expr>()?;
+        });
+    }
+    ret
+}
+
+/// Build object (struct or enum) unpacker tokens
+fn build_object_packer(attrs: &Vec<Attribute>) -> TokenStream {
+    // TODO: Id bytes
+    let mut ret = quote! {};
+
+    if let Some(expr) = find_attr_by_name(&attrs, "prepend_length") {
+        ret.extend(quote! {
+            bytes
+        });
+        if let Some (offset) = find_attr_by_name(&attrs, "prepend_length_offset") {
+            ret.extend(quote! {
+                .pack_length_with_offset::<#expr>(#offset)?;
+            });
+        } else {
+            ret.extend(quote! {
+                .pack_length::<#expr>()?;
+            });
+        }
+    }
+    ret
+}
+
+/// Build field packer tokens
 ///
 /// Full example: `bytes.pack_length::<u16>().set_bits(12).pack::<MyType>()?`
-fn build_packer(attrs: &Vec<Attribute>, field_name: &Ident) -> TokenStream {
-    let bits = find_attr_by_name(&attrs, "bits");
-    let prepend_length = find_attr_by_name(&attrs, "prepend_length");
+/// 
+/// Type is inferred from the field type, so we don't need to specify it again
+fn build_field_packer(attrs: &Vec<Attribute>, field_name: &Ident) -> TokenStream {
+
     let mut ret = quote! {
         bytes
     };
 
-    if let Some(expr) = prepend_length {
-        ret.extend(quote! {
-            .pack_length::<#expr>()?
-        });
+    if let Some(expr) = find_attr_by_name(&attrs, "prepend_length") {
+        if let Some (offset) = find_attr_by_name(&attrs, "prepend_length_offset") {
+            ret.extend(quote! {
+                .pack_length_with_offset::<#expr>(#offset)?
+            });
+        } else {
+            ret.extend(quote! {
+                .pack_length::<#expr>()?
+            });
+        }
     }
-    if let Some(bexpr) = bits {
+    if let Some(bexpr) = find_attr_by_name(&attrs, "bits") {
         ret.extend(quote! {
             .set_bits(#bexpr)
         });
@@ -51,21 +92,19 @@ fn build_packer(attrs: &Vec<Attribute>, field_name: &Ident) -> TokenStream {
     ret
 }
 
-/// Build unpacker tokens
+/// Build field unpacker tokens
 ///
 /// Full example: `bytes.unpack_length::<u16>().set_bits(12).unpack::<MyType>()?`
-fn build_unpacker(attrs: &Vec<Attribute>, ty: Option<Type>) -> TokenStream {
-    let bits = find_attr_by_name(&attrs, "bits");
-    let prepend_length = find_attr_by_name(&attrs, "prepend_length");
+fn build_field_unpacker(attrs: &Vec<Attribute>, ty: Option<Type>) -> TokenStream {
     let mut ret = quote! {
         bytes
     };
-    if let Some(expr) = prepend_length {
+    if let Some(expr) = find_attr_by_name(&attrs, "prepend_length") {
         ret.extend(quote! {
             .unpack_length::<#expr>()?
         });
     }
-    if let Some(bexpr) = bits {
+    if let Some(bexpr) = find_attr_by_name(&attrs, "bits") {
         ret.extend(quote! {
             .set_bits(#bexpr)
         });
@@ -116,11 +155,11 @@ fn construct_callback(arg: &ConstructorCbArg) -> TokenStream {
     let top_level_attrs = &arg.top_level_attrs;
 
     match field {
-        FieldDef::Named { attrs, .. } => build_unpacker(&attrs, None),
-        FieldDef::Unnamed { attrs, .. } => build_unpacker(&attrs, None),
+        FieldDef::Named { attrs, .. } => build_field_unpacker(&attrs, None),
+        FieldDef::Unnamed { attrs, .. } => build_field_unpacker(&attrs, None),
 
         // I'm not sure about UnitStruct, my use-case doesn't use those yet
-        FieldDef::UnitStruct => build_unpacker(&top_level_attrs, Some(type_name.clone())),
+        FieldDef::UnitStruct => build_field_unpacker(&top_level_attrs, Some(type_name.clone())),
         FieldDef::UnitEnum {
             variant_name,
             discriminant,
@@ -136,12 +175,12 @@ fn destruct_callback(args: &DestructurerCbArg) -> TokenStream {
     let top_level_attrs = &args.top_level_attrs;
 
     match &args.field {
-        FieldDef::Named { attrs, name, .. } => build_packer(attrs, name),
+        FieldDef::Named { attrs, name, .. } => build_field_packer(attrs, name),
         FieldDef::Unnamed {
             attrs, var_match, ..
-        } => build_packer(attrs, var_match),
+        } => build_field_packer(attrs, var_match),
         FieldDef::UnitStruct => {
-            build_packer(&top_level_attrs, &Ident::new("self", Span::call_site()))
+            build_field_packer(&top_level_attrs, &Ident::new("self", Span::call_site()))
         }
         FieldDef::UnitEnum {
             variant_name,
@@ -155,14 +194,17 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
     let mut impls = items
         .iter()
         .filter_map(|item| {
-            let (name, destructed, constructed) = match item {
+            let (name, destructed, constructed, prepend_dest, prepend_const) = match item {
                 Item::Struct(istruct) => {
                     let genitem = GenItem::Struct(istruct.clone());
                     let struct_name = &istruct.ident;
+                    let prepend_dest = build_object_packer(&istruct.attrs);
+                    let prepend_const = build_object_unpacker(&istruct.attrs);
                     let destructed = destruct(&Destructurer {
                         item: genitem.clone(),
-                        prepend: quote! {},
-                        append: quote! {},
+                        wrapper: |fields| quote! {
+                            #(#fields)*
+                        },
                         destructrurer: destruct_callback,
                     });
                     let constructed = construct(&Constructor {
@@ -171,10 +213,12 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                     });
                     (struct_name, destructed, quote! {
                         Ok(#constructed)
-                    })
+                    }, prepend_dest, prepend_const)
                 }
                 Item::Enum(ienum) => {
                     let enum_name = &ienum.ident;
+                    let prepend_dest = build_object_packer(&ienum.attrs);
+                    let prepend_const = build_object_unpacker(&ienum.attrs);
                     let mut destructed = Vec::new();
                     let mut constructed = Vec::new();
                     let last_variant = ienum.variants.last().unwrap();
@@ -199,8 +243,10 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                         });
                         let destr = destruct(&Destructurer {
                             item: genitem.clone(),
-                            prepend: quote! { #destruct_id_bytes },
-                            append: quote! {},
+                            wrapper: |fields| quote! {
+                                #destruct_id_bytes
+                                #(#fields)*
+                            },
                             destructrurer: destruct_callback,
                         });
                         destructed.push(quote! {
@@ -236,6 +282,8 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                             #(#constructed);*
                             #err_or_nothing
                         },
+                        prepend_dest,
+                        prepend_const
                     )
                 }
                 _ => return None,
@@ -244,9 +292,11 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
             Some(quote! {
                 impl FromToPacket for #name {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                        #prepend_const
                         #constructed
                     }
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+                        #prepend_dest
                         match self {
                             #destructed
                         };
@@ -280,6 +330,8 @@ mod tests {
     fn test_implementer() {
         let input_file_contents = quote! {
 
+            /// prepend_length = u16
+            /// prepend_length_offset = 2
             struct MyStruct {
                 /// bits = 12
                 field1: u16,
@@ -291,6 +343,7 @@ mod tests {
 
             struct AnotherStruct(u32, String);
 
+            /// id = &[0x99]
             struct ThirdStruct;
 
             enum MyEnum {
@@ -319,6 +372,7 @@ mod tests {
             pretty_string(quote! {
                 impl FromToPacket for MyStruct {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                        bytes.unpack_length::<u16>()?;
                         Ok(MyStruct {
                             field1: bytes.set_bits(12).unpack()?,
                             field2: bytes.set_bits(4).unpack()?,
@@ -326,6 +380,7 @@ mod tests {
                         })
                     }
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+                        bytes.pack_length_with_offset::<u16>(2)?;
                         match self {
                             MyStruct { field1, field2, field3 } => {
                                 bytes.set_bits(12).pack(field1)?;

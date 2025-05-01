@@ -79,8 +79,11 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                     let genitem = GenItem::Struct(istruct.clone());
                     let struct_name = &istruct.ident;
                     let destructed = destruct(&Destructurer {
-                        prepend: quote! {},
-                        append: quote! {},
+                        wrapper: |fields| {
+                            quote! {
+                                #(#fields)*
+                            }
+                        },
                         item: genitem.clone(),
                         destructrurer: destruct_callback,
                     });
@@ -102,8 +105,11 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                             constructer: construct_callback,
                         });
                         let destr = destruct(&Destructurer {
-                            prepend: quote! {},
-                            append: quote! {},
+                            wrapper: |fields| {
+                                quote! {
+                                    #(#fields)*
+                                }
+                            },
                             item: genitem.clone(),
                             destructrurer: destruct_callback,
                         });

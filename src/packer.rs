@@ -304,6 +304,7 @@ struct BitsetInstruction {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 struct LengthPosition {
     position: usize,
+    offset: i32,
     bytes: usize,
 }
 
@@ -366,9 +367,13 @@ impl Packet {
         // TODO: This doesn't need to mutate `data`, it could return a copy of
         // the data with length positions updated with the values
         for length_position in &self.length_positions {
-            let length =
-                (self.data.len() - 1) - (length_position.position + length_position.bytes - 1);
+            // Length of bytes from position to end of data, minus the length and offset
+            let length = (self.data.len() as i32 - 1)
+                - (length_position.position as i32 + length_position.bytes as i32 - 1)
+                + length_position.offset;
+
             let len_bytes = length.to_le_bytes();
+
             self.data[length_position.position
                 ..length_position.position + length_position.bytes.min(len_bytes.len())]
                 .copy_from_slice(&len_bytes[0..length_position.bytes.min(len_bytes.len())]);
@@ -438,6 +443,27 @@ impl Packet {
         let bytes = std::mem::size_of::<T>();
         self.length_positions.insert(LengthPosition {
             position: self.position,
+            offset: 0,
+            bytes,
+        });
+
+        self.pack_bytes(&vec![0; bytes])?;
+        Ok(self)
+    }
+
+    pub fn pack_length_with_offset<T: FromToPacket + Default>(
+        &mut self,
+        offset: i32,
+    ) -> Result<&mut Self, PacketError> {
+        // Only allow packing length if no instructions are present
+        if !self.instructions.is_empty() {
+            return Err(PacketError::InvalidInstruction);
+        }
+
+        let bytes = std::mem::size_of::<T>();
+        self.length_positions.insert(LengthPosition {
+            position: self.position,
+            offset,
             bytes,
         });
 
@@ -451,7 +477,7 @@ impl Packet {
             return Err(PacketError::InvalidInstruction);
         }
 
-        // Ignore the length
+        // Ignore the length, for now at least
         T::from_packet(self)?;
         Ok(self)
     }
@@ -685,6 +711,26 @@ mod tests {
             &[
                 0x1, 0x2, 0x3, // Prefix
                 0x03, 0x00, // Length
+                0xA, 0xB, 0xC // Data
+            ]
+        );
+    }
+
+    #[test]
+    fn test_pack_length_with_offset() {
+        let mut packet = Packet::new();
+        packet.pack_bytes(&[0x1, 0x2, 0x3]).unwrap();
+
+        // Length from *current* position to the end of the packet
+        packet.pack_length_with_offset::<u16>(-2).unwrap();
+        packet.pack_bytes(&[0xA, 0xB, 0xC]).unwrap();
+
+        // It should be 3 bytes from the current position to the end of the packet
+        assert_eq!(
+            packet.get_bytes(),
+            &[
+                0x1, 0x2, 0x3, // Prefix
+                0x01, 0x00, // Length
                 0xA, 0xB, 0xC // Data
             ]
         );

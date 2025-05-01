@@ -35,15 +35,18 @@ pub struct ConstructorCbArg {
     pub field: FieldDef,
 }
 
-pub struct Constructor {
+pub struct Constructor<T: Fn(&ConstructorCbArg) -> TokenStream> {
     pub item: GenItem,
-    pub constructer: fn(&ConstructorCbArg) -> TokenStream,
+    pub constructer: T,
 }
 
 /// Constructs the value of the type based on the provided callback
 ///
 /// The callback is called for each field of the struct or enum variant.
-pub fn construct(args: &Constructor) -> TokenStream {
+pub fn construct<T>(args: &Constructor<T>) -> TokenStream
+where
+    T: Fn(&ConstructorCbArg) -> TokenStream,
+{
     let item = &args.item;
     let cb = &args.constructer;
 

@@ -45,6 +45,7 @@ impl FromToPacket for H4Packet {
 }
 impl FromToPacket for L2CapMessage {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        bytes.unpack_length::<u16>()?;
         if bytes.next_if_eq(&[0x06, 0x00]) {
             return Ok(L2CapMessage::Smp(bytes.unpack()?));
         }
@@ -54,6 +55,7 @@ impl FromToPacket for L2CapMessage {
         Ok(L2CapMessage::Unknown(bytes.unpack()?, bytes.unpack()?))
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        bytes.pack_length_with_offset::<u16>(-2)?;
         match self {
             L2CapMessage::Smp(m0) => {
                 bytes.pack_bytes(&[0x06, 0x00])?;

@@ -33,20 +33,25 @@ pub struct DestructurerCbArg {
     pub field: FieldDef,
 }
 
-pub struct Destructurer {
+pub struct Destructurer<
+    W: Fn(Vec<TokenStream>) -> TokenStream,
+    D: Fn(&DestructurerCbArg) -> TokenStream,
+> {
     pub item: GenItem,
-    pub prepend: TokenStream,
-    pub append: TokenStream,
-    pub destructrurer: fn(&DestructurerCbArg) -> TokenStream,
+    pub wrapper: W,
+    pub destructrurer: D,
 }
 
 /// Returns destructuring syntax for pattern matching
 ///
 /// Result does not contain `match foo {}` only single arm of the match case.
-pub fn destruct(args: &Destructurer) -> TokenStream {
+pub fn destruct<T, D>(args: &Destructurer<T, D>) -> TokenStream
+where
+    T: Fn(Vec<TokenStream>) -> TokenStream,
+    D: Fn(&DestructurerCbArg) -> TokenStream,
+{
     let cb = &args.destructrurer;
-    let prepend = &args.prepend;
-    let append = &args.append;
+    let wrapper = &args.wrapper;
     match &args.item {
         GenItem::Struct(item_struct) => {
             let struct_name = Type::Path(TypePath {
@@ -66,13 +71,12 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                     let field_defs = build_field_defs_named(fields);
                     let field_names = get_field_names(&field_defs);
                     let field_values = field_defs.iter().map(my_cb);
+                    let body = wrapper(field_values.collect());
                     quote! {
                         #struct_name {
                             #(#field_names),*
                         } => {
-                            #prepend
-                            #(#field_values)*
-                            #append
+                            #body
                         }
                     }
                 }
@@ -80,13 +84,12 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                     let field_defs = build_field_defs_unnamed(fields);
                     let field_values = field_defs.iter().map(my_cb);
                     let field_matchers = get_field_matchers(&field_defs);
+                    let body = wrapper(field_values.collect());
                     quote! {
                         #struct_name(
                             #(#field_matchers),*
                         ) => {
-                            #prepend
-                            #(#field_values)*
-                            #append
+                            #body
                         }
                     }
                 }
@@ -97,11 +100,10 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                         // var_name: var_name.clone(),
                         field: FieldDef::UnitStruct,
                     });
+                    let body = wrapper(vec![field_value]);
                     quote! {
                         #struct_name => {
-                            #prepend
-                            #field_value
-                            #append
+                            #body
                         }
                     }
                 }
@@ -127,13 +129,12 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                     let field_defs = build_field_defs_named(fields);
                     let field_names = get_field_names(&field_defs);
                     let field_values = field_defs.iter().map(my_cb);
+                    let body = wrapper(field_values.collect());
                     quote! {
                         #enum_name::#variant_name {
                             #(#field_names),*
                         } => {
-                            #prepend
-                            #(#field_values)*
-                            #append
+                            #body
                         }
                     }
                 }
@@ -141,13 +142,12 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                     let field_defs = build_field_defs_unnamed(fields);
                     let field_values = field_defs.iter().map(my_cb);
                     let field_matchers = get_field_matchers(&field_defs);
+                    let body = wrapper(field_values.collect());
                     quote! {
                         #enum_name::#variant_name(
                             #(#field_matchers),*
                         ) => {
-                            #prepend
-                            #(#field_values)*
-                            #append
+                            #body
                         }
                     }
                 }
@@ -162,11 +162,10 @@ pub fn destruct(args: &Destructurer) -> TokenStream {
                             discriminant: variant.discriminant.clone().map(|d| d.1),
                         },
                     });
+                    let body = wrapper(vec![field_value]);
                     quote! {
                         #enum_name::#variant_name => {
-                            #prepend
-                            #field_value
-                            #append
+                            #body
                         }
                     }
                 }
@@ -215,14 +214,14 @@ mod tests {
         }
         .to_string();
         let item: ItemStruct = syn::parse_str(&input).unwrap();
-
         let destructed = destruct(&Destructurer {
             item: GenItem::Struct(item),
-            prepend: quote! {
-                my_destructor.init()?;
-            },
-            append: quote! {
-                my_destructor.finish()?;
+            wrapper: |fields| {
+                quote! {
+                    my_destructor.init()?;
+                    #(#fields)*
+                    my_destructor.finish()?;
+                }
             },
             destructrurer: dummy_callback,
         });
@@ -252,11 +251,12 @@ mod tests {
 
         let destructed = destruct(&Destructurer {
             item: GenItem::Struct(item),
-            prepend: quote! {
-                my_destructor.init()?;
-            },
-            append: quote! {
-                my_destructor.finish()?;
+            wrapper: |fields| {
+                quote! {
+                    my_destructor.init()?;
+                    #(#fields)*
+                    my_destructor.finish()?;
+                }
             },
             destructrurer: dummy_callback,
         });
@@ -286,11 +286,12 @@ mod tests {
 
         let destructed = destruct(&Destructurer {
             item: GenItem::Struct(item),
-            prepend: quote! {
-                my_destructor.init()?;
-            },
-            append: quote! {
-                my_destructor.finish()?;
+            wrapper: |fields| {
+                quote! {
+                    my_destructor.init()?;
+                    #(#fields)*
+                    my_destructor.finish()?;
+                }
             },
             destructrurer: dummy_callback,
         });
@@ -320,11 +321,12 @@ mod tests {
         let item: ItemEnum = syn::parse_str(&input).unwrap();
         let destructured = destruct(&Destructurer {
             item: GenItem::Enum(item.clone(), item.variants.last().unwrap().clone()),
-            prepend: quote! {
-                my_destructor.init()?;
-            },
-            append: quote! {
-                my_destructor.finish()?;
+            wrapper: |fields| {
+                quote! {
+                    my_destructor.init()?;
+                    #(#fields)*
+                    my_destructor.finish()?;
+                }
             },
             destructrurer: dummy_callback,
         });
@@ -357,11 +359,12 @@ mod tests {
         let item: ItemEnum = syn::parse_str(&input).unwrap();
         let destructured = destruct(&Destructurer {
             item: GenItem::Enum(item.clone(), item.variants.last().unwrap().clone()),
-            prepend: quote! {
-                my_destructor.init()?;
-            },
-            append: quote! {
-                my_destructor.finish()?;
+            wrapper: |fields| {
+                quote! {
+                    my_destructor.init()?;
+                    #(#fields)*
+                    my_destructor.finish()?;
+                }
             },
             destructrurer: dummy_callback,
         });
@@ -391,11 +394,12 @@ mod tests {
         let item: ItemEnum = syn::parse_str(&input).unwrap();
         let destructured = destruct(&Destructurer {
             item: GenItem::Enum(item.clone(), item.variants.last().unwrap().clone()),
-            prepend: quote! {
-                my_destructor.init()?;
-            },
-            append: quote! {
-                my_destructor.finish()?;
+            wrapper: |fields| {
+                quote! {
+                    my_destructor.init()?;
+                    #(#fields)*
+                    my_destructor.finish()?;
+                }
             },
             destructrurer: dummy_callback,
         });
