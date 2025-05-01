@@ -1,21 +1,12 @@
-use proc_macro2::Literal;
-use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
-use quote::TokenStreamExt;
-use std::fs::*;
 use syn;
 use syn::Attribute;
-use syn::Fields;
-use syn::FieldsNamed;
 use syn::Ident;
 use syn::Item;
-use syn::ItemEnum;
-use syn::ItemStruct;
-use syn::Lit;
 use syn::Type;
-use syn::{Expr, Meta, MetaNameValue};
+use syn::Expr;
 
 use crate::common::find_attr_by_name;
 use crate::common::FieldDef;
@@ -27,12 +18,14 @@ use crate::destruct::destruct;
 use crate::destruct::Destructurer;
 use crate::destruct::DestructurerCbArg;
 
-fn build_unitstruct_packer(attrs: &Vec<Attribute>) -> TokenStream {
+fn build_unitstruct_packer(attrs: &Vec<Attribute>, name: &Type) -> TokenStream {
     let mut ret = quote! {};
     if let Some(idbytes) = find_attr_by_name(&attrs, "id") {
         ret.extend(quote! {
             bytes.pack_bytes(#idbytes)?;
         })
+    } else {
+        panic!("No id found for unit struct {}", name.to_token_stream().to_string());
     }
     ret
 }
@@ -170,16 +163,13 @@ fn get_id_bytes(variant: &syn::Variant) -> IdBytes {
 fn construct_callback(arg: &ConstructorCbArg) -> TokenStream {
     let field = &arg.field;
     let type_name = &arg.type_name;
-    let top_level_attrs = &arg.top_level_attrs;
 
     match field {
         FieldDef::Named { attrs, .. } => build_field_unpacker(&attrs, None),
         FieldDef::Unnamed { attrs, .. } => build_field_unpacker(&attrs, None),
-        FieldDef::UnitStruct { attrs } => quote! { #type_name },
+        FieldDef::UnitStruct { .. } => quote! { #type_name },
         FieldDef::UnitEnum {
             variant_name,
-            discriminant,
-            attrs,
             ..
         } => quote! { #type_name::#variant_name },
     }
@@ -187,21 +177,20 @@ fn construct_callback(arg: &ConstructorCbArg) -> TokenStream {
 
 fn destruct_callback(args: &DestructurerCbArg) -> TokenStream {
     // let var_name = &args.var_name;
-    // let type_name = &args.type_name;
-    let top_level_attrs = &args.top_level_attrs;
+    let type_name = &args.type_name;
 
     match &args.field {
         FieldDef::Named { attrs, name, .. } => build_field_packer(attrs, name),
         FieldDef::Unnamed {
             attrs, var_match, ..
         } => build_field_packer(attrs, var_match),
-        FieldDef::UnitStruct { attrs } => build_unitstruct_packer(attrs),
+        FieldDef::UnitStruct { attrs } => build_unitstruct_packer(attrs, type_name),
         FieldDef::UnitEnum {..} => quote! {},
     }
 }
 
 pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
-    let mut impls = items
+    let impls = items
         .iter()
         .filter_map(|item| {
             let (name, destructed, constructed, prepend_dest, prepend_const) = match item {
@@ -275,7 +264,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                     }
 
                     let err_or_nothing = match last_variant_id {
-                        IdBytes::Bytes(token_stream) => quote! {
+                        IdBytes::Bytes(_) => quote! {
                             Err(PacketError::Unspecified(format!("No matching variant found for {}", stringify!(#enum_name))))
                         },
                         IdBytes::Passthrough => quote! {

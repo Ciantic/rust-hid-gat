@@ -1,23 +1,10 @@
-use core::panic;
-use proc_macro2::Literal;
-use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
-use quote::ToTokens;
-use quote::TokenStreamExt;
-use std::fs::*;
 use syn;
 use syn::Attribute;
 use syn::Fields;
-use syn::FieldsNamed;
-use syn::FieldsUnnamed;
-use syn::Ident;
-use syn::ItemEnum;
-use syn::ItemStruct;
-use syn::Lit;
 use syn::Type;
 use syn::TypePath;
-use syn::{Expr, Meta, MetaNameValue};
 
 use crate::common::build_field_defs_named;
 use crate::common::build_field_defs_unnamed;
@@ -178,7 +165,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use proc_macro2::Span;
+    use syn::{ItemEnum, ItemStruct};
 
     use super::*;
 
