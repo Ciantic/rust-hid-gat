@@ -27,10 +27,28 @@ use crate::destruct::destruct;
 use crate::destruct::Destructurer;
 use crate::destruct::DestructurerCbArg;
 
+fn build_unitstruct_packer(attrs: &Vec<Attribute>) -> TokenStream {
+    let mut ret = quote! {};
+    if let Some(idbytes) = find_attr_by_name(&attrs, "id") {
+        ret.extend(quote! {
+            bytes.pack_bytes(#idbytes)?;
+        })
+    }
+    ret
+}
+
+
 /// Build object (struct or enum) packer tokens
-fn build_object_unpacker(attrs: &Vec<Attribute>) -> TokenStream {
+fn build_object_unpacker(attrs: &Vec<Attribute>, object_name: &Ident) -> TokenStream {
     // TOOD: Id bytes 
     let mut ret = quote! {};
+    if let Some(idbytes) = find_attr_by_name(&attrs, "id") {
+        ret.extend(quote! {
+            if !bytes.next_if_eq(#idbytes) {
+                return Err(PacketError::Unspecified(format!("No matching bytes found for {}", stringify!(#object_name))));
+            }
+        })
+    }
     if let Some(expr) = find_attr_by_name(&attrs, "prepend_length") {
         ret.extend(quote! {
             bytes.unpack_length::<#expr>()?;
@@ -41,8 +59,8 @@ fn build_object_unpacker(attrs: &Vec<Attribute>) -> TokenStream {
 
 /// Build object (struct or enum) unpacker tokens
 fn build_object_packer(attrs: &Vec<Attribute>) -> TokenStream {
-    // TODO: Id bytes
     let mut ret = quote! {};
+    
 
     if let Some(expr) = find_attr_by_name(&attrs, "prepend_length") {
         ret.extend(quote! {
@@ -157,9 +175,7 @@ fn construct_callback(arg: &ConstructorCbArg) -> TokenStream {
     match field {
         FieldDef::Named { attrs, .. } => build_field_unpacker(&attrs, None),
         FieldDef::Unnamed { attrs, .. } => build_field_unpacker(&attrs, None),
-
-        // I'm not sure about UnitStruct, my use-case doesn't use those yet
-        FieldDef::UnitStruct => build_field_unpacker(&top_level_attrs, Some(type_name.clone())),
+        FieldDef::UnitStruct { attrs } => quote! { #type_name },
         FieldDef::UnitEnum {
             variant_name,
             discriminant,
@@ -179,14 +195,8 @@ fn destruct_callback(args: &DestructurerCbArg) -> TokenStream {
         FieldDef::Unnamed {
             attrs, var_match, ..
         } => build_field_packer(attrs, var_match),
-        FieldDef::UnitStruct => {
-            build_field_packer(&top_level_attrs, &Ident::new("self", Span::call_site()))
-        }
-        FieldDef::UnitEnum {
-            variant_name,
-            attrs,
-            ..
-        } => quote! {},
+        FieldDef::UnitStruct { attrs } => build_unitstruct_packer(attrs),
+        FieldDef::UnitEnum {..} => quote! {},
     }
 }
 
@@ -199,7 +209,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                     let genitem = GenItem::Struct(istruct.clone());
                     let struct_name = &istruct.ident;
                     let prepend_dest = build_object_packer(&istruct.attrs);
-                    let prepend_const = build_object_unpacker(&istruct.attrs);
+                    let prepend_const = build_object_unpacker(&istruct.attrs, struct_name);
                     let destructed = destruct(&Destructurer {
                         item: genitem.clone(),
                         wrapper: |fields| quote! {
@@ -218,7 +228,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                 Item::Enum(ienum) => {
                     let enum_name = &ienum.ident;
                     let prepend_dest = build_object_packer(&ienum.attrs);
-                    let prepend_const = build_object_unpacker(&ienum.attrs);
+                    let prepend_const = build_object_unpacker(&ienum.attrs, enum_name);
                     let mut destructed = Vec::new();
                     let mut constructed = Vec::new();
                     let last_variant = ienum.variants.last().unwrap();
@@ -407,14 +417,15 @@ mod tests {
                 }
                 impl FromToPacket for ThirdStruct {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-
-                        // Not sure about this?
-                        Ok(bytes.unpack::<ThirdStruct>()?)
+                        if !bytes.next_if_eq(&[0x99]) {
+                            return Err(PacketError::Unspecified(format!("No matching bytes found for {}", stringify!(ThirdStruct))));
+                        }
+                        Ok(ThirdStruct)
                     }
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
                             ThirdStruct => {
-                                bytes.pack(self)?;
+                                bytes.pack_bytes(&[0x99])?;
                             }
                         };
                         Ok(())

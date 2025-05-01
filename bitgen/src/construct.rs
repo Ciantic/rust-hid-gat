@@ -89,9 +89,11 @@ where
                 }
                 Fields::Unit => {
                     let field_value = cb(&ConstructorCbArg {
-                        top_level_attrs: top_level_attrs,
+                        top_level_attrs: top_level_attrs.clone(),
                         type_name: struct_name.clone(),
-                        field: FieldDef::UnitStruct,
+                        field: FieldDef::UnitStruct {
+                            attrs: top_level_attrs.clone(),
+                        },
                     });
                     quote! {
                         #field_value
@@ -161,7 +163,7 @@ mod tests {
             FieldDef::Unnamed { index, ty, .. } => quote! {
                 my_maker::<#ty>(#index)
             },
-            FieldDef::UnitStruct => quote! {
+            FieldDef::UnitStruct { .. } => quote! {
                 my_maker::<#type_name>()
             },
             FieldDef::UnitEnum {

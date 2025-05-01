@@ -34,7 +34,7 @@ fn construct_callback(arg: &ConstructorCbArg) -> TokenStream {
         FieldDef::Unnamed { index, ty, .. } => quote! {
             foo.my_maker::<#ty>(#index)
         },
-        FieldDef::UnitStruct => quote! {
+        FieldDef::UnitStruct { .. } => quote! {
             foo.my_maker::<#type_name>()
         },
         FieldDef::UnitEnum {
@@ -61,7 +61,7 @@ fn destruct_callback(args: &DestructurerCbArg) -> TokenStream {
                 foo.my_destructor::<#ty>(#var_match)?;
             }
         }
-        FieldDef::UnitStruct => quote! {
+        FieldDef::UnitStruct { .. } => quote! {
             foo.my_destructor::<#type_name>()?;
         },
         FieldDef::UnitEnum { variant_name, .. } => quote! {

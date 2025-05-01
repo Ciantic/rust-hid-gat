@@ -98,7 +98,9 @@ where
                         top_level_attrs: item_struct.attrs.clone(),
                         type_name: struct_name.clone(),
                         // var_name: var_name.clone(),
-                        field: FieldDef::UnitStruct,
+                        field: FieldDef::UnitStruct {
+                            attrs: item_struct.attrs.clone(),
+                        },
                     });
                     let body = wrapper(vec![field_value]);
                     quote! {
@@ -194,7 +196,7 @@ mod tests {
                     my_destructor::<#ty>(#var_match)?;
                 }
             }
-            FieldDef::UnitStruct => quote! {
+            FieldDef::UnitStruct { .. } => quote! {
                 my_destructor::<#type_name>()?;
             },
             FieldDef::UnitEnum { variant_name, .. } => quote! {

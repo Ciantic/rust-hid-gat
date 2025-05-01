@@ -41,7 +41,10 @@ pub enum FieldDef {
         var_match: Ident,
         ty: Type,
     },
-    UnitStruct,
+    UnitStruct {
+        /// Attributes of the struct
+        attrs: Vec<Attribute>,
+    },
     UnitEnum {
         attrs: Vec<Attribute>,
         discriminant: Option<Expr>,
