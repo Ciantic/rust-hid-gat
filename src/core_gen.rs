@@ -156,101 +156,20 @@ impl FromToPacket for SmpPdu {
         Ok(())
     }
 }
-impl FromToPacket for AclMessage {
-    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-        if bytes.next_if_eq(&[0x15, 0x00, 0x11, 0x00, 0x06, 0x00, 0x03]) {
-            return Ok(AclMessage::SmpPairingConfirmation {
-                confirm_value: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq(&[0x15, 0x00, 0x11, 0x00, 0x06, 0x00, 0x04]) {
-            return Ok(AclMessage::SmpPairingRandom {
-                random_value: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq(&[0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x01]) {
-            return Ok(AclMessage::SmpPairingRequest {
-                io_capability: bytes.unpack()?,
-                oob_data_flag: bytes.unpack()?,
-                authentication_requirements: bytes.unpack()?,
-                max_encryption_key_size: bytes.unpack()?,
-                initiator_key_distribution: bytes.unpack()?,
-                responder_key_distribution: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq(&[0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x02]) {
-            return Ok(AclMessage::SmpPairingResponse {
-                io_capability: bytes.unpack()?,
-                oob_data_flag: bytes.unpack()?,
-                authentication_requirements: bytes.unpack()?,
-                max_encryption_key_size: bytes.unpack()?,
-                initiator_key_distribution: bytes.unpack()?,
-                responder_key_distribution: bytes.unpack()?,
-            });
-        }
-        Err(
-            PacketError::Unspecified(
-                format!("No matching variant found for {}", stringify!(AclMessage)),
-            ),
-        )
-    }
-    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-        match self {
-            AclMessage::SmpPairingConfirmation { confirm_value } => {
-                bytes.pack_bytes(&[0x15, 0x00, 0x11, 0x00, 0x06, 0x00, 0x03])?;
-                bytes.pack(confirm_value)?;
-            }
-            AclMessage::SmpPairingRandom { random_value } => {
-                bytes.pack_bytes(&[0x15, 0x00, 0x11, 0x00, 0x06, 0x00, 0x04])?;
-                bytes.pack(random_value)?;
-            }
-            AclMessage::SmpPairingRequest {
-                io_capability,
-                oob_data_flag,
-                authentication_requirements,
-                max_encryption_key_size,
-                initiator_key_distribution,
-                responder_key_distribution,
-            } => {
-                bytes.pack_bytes(&[0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x01])?;
-                bytes.pack(io_capability)?;
-                bytes.pack(oob_data_flag)?;
-                bytes.pack(authentication_requirements)?;
-                bytes.pack(max_encryption_key_size)?;
-                bytes.pack(initiator_key_distribution)?;
-                bytes.pack(responder_key_distribution)?;
-            }
-            AclMessage::SmpPairingResponse {
-                io_capability,
-                oob_data_flag,
-                authentication_requirements,
-                max_encryption_key_size,
-                initiator_key_distribution,
-                responder_key_distribution,
-            } => {
-                bytes.pack_bytes(&[0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x02])?;
-                bytes.pack(io_capability)?;
-                bytes.pack(oob_data_flag)?;
-                bytes.pack(authentication_requirements)?;
-                bytes.pack(max_encryption_key_size)?;
-                bytes.pack(initiator_key_distribution)?;
-                bytes.pack(responder_key_distribution)?;
-            }
-        };
-        Ok(())
-    }
-}
 impl FromToPacket for HciCommand {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-        if bytes.next_if_eq(&[0x03, 0x0C, 0x00]) {
+        if bytes.next_if_eq(&[0x03, 0x0C]) {
+            bytes.unpack_length::<u8>()?;
             return Ok(HciCommand::Reset);
         }
         if bytes.next_if_eq(&[0x01, 0x0c]) {
+            bytes.unpack_length::<u8>()?;
             return Ok(HciCommand::SetEventMask {
                 event_mask: bytes.unpack()?,
             });
         }
-        if bytes.next_if_eq(&[0x01, 0x20, 0x08]) {
+        if bytes.next_if_eq(&[0x01, 0x20]) {
+            bytes.unpack_length::<u8>()?;
             return Ok(HciCommand::LeSetEventMask {
                 event_mask: bytes.unpack()?,
             });
@@ -264,14 +183,17 @@ impl FromToPacket for HciCommand {
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
             HciCommand::Reset => {
-                bytes.pack_bytes(&[0x03, 0x0C, 0x00])?;
+                bytes.pack_bytes(&[0x03, 0x0C])?;
+                bytes.pack_length::<u8>()?;
             }
             HciCommand::SetEventMask { event_mask } => {
                 bytes.pack_bytes(&[0x01, 0x0c])?;
+                bytes.pack_length::<u8>()?;
                 bytes.pack(event_mask)?;
             }
             HciCommand::LeSetEventMask { event_mask } => {
-                bytes.pack_bytes(&[0x01, 0x20, 0x08])?;
+                bytes.pack_bytes(&[0x01, 0x20])?;
+                bytes.pack_length::<u8>()?;
                 bytes.pack(event_mask)?;
             }
         };

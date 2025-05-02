@@ -26,7 +26,7 @@ fn build_unitstruct_packer(attrs: &Vec<Attribute>, name: &Type) -> TokenStream {
             bytes.pack_bytes(#idbytes)?;
         })
     } else {
-        panic!("No id found for unit struct {}", name.to_token_stream().to_string());
+        panic!("No id found for {}", name.to_token_stream().to_string());
     }
     ret
 }
@@ -34,7 +34,6 @@ fn build_unitstruct_packer(attrs: &Vec<Attribute>, name: &Type) -> TokenStream {
 
 /// Build object (struct or enum) packer tokens
 fn build_object_unpacker(attrs: &Vec<Attribute>, object_name: &Ident) -> TokenStream {
-    // TOOD: Id bytes 
     let mut ret = quote! {};
     if let Some(idbytes) = find_attr_by_name(&attrs, "id") {
         ret.extend(quote! {
@@ -51,8 +50,8 @@ fn build_object_unpacker(attrs: &Vec<Attribute>, object_name: &Ident) -> TokenSt
     ret
 }
 
-/// Build object (struct or enum) unpacker tokens
-fn build_object_packer(attrs: &Vec<Attribute>) -> TokenStream {
+/// Build pack length tokens
+fn build_pack_length(attrs: &Vec<Attribute>) -> TokenStream {
     let mut ret = quote! {};
     
     if let Some(expr) = find_attr_by_name(&attrs, "prepend_length") {
@@ -68,6 +67,18 @@ fn build_object_packer(attrs: &Vec<Attribute>) -> TokenStream {
                 .pack_length::<#expr>()?;
             });
         }
+    }
+    ret
+}
+
+/// Build unpack length tokens
+fn build_unpack_length(attrs: &Vec<Attribute>) -> TokenStream {
+    let mut ret = quote! {};
+    
+    if let Some(expr) = find_attr_by_name(&attrs, "prepend_length") {
+        ret.extend(quote! {
+            bytes.unpack_length::<#expr>()?;
+        });
     }
     ret
 }
@@ -192,7 +203,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                 Item::Struct(istruct) => {
                     let genitem = GenItem::Struct(istruct.clone());
                     let struct_name = &istruct.ident;
-                    let object_packer = build_object_packer(&istruct.attrs);
+                    let object_length_packer = build_pack_length(&istruct.attrs);
                     let object_unpacker = build_object_unpacker(&istruct.attrs, struct_name);
                     let pack_fields = destruct(&Destructurer {
                         item: genitem.clone(),
@@ -213,7 +224,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                                 Ok(#unpack_to_value)
                             }
                             fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-                                #object_packer
+                                #object_length_packer
                                 match self {
                                     #pack_fields
                                 };
@@ -224,12 +235,18 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                 }
                 Item::Enum(ienum) => {
                     let enum_name = &ienum.ident;
-                    let object_packer = build_object_packer(&ienum.attrs);
+                    let object_pack_length = build_pack_length(&ienum.attrs);
                     let object_unpacker = build_object_unpacker(&ienum.attrs, enum_name);
                     let mut packers = Vec::new();
                     let mut unpackers = Vec::new();
                     let last_variant = ienum.variants.last().unwrap();
                     let last_variant_id = get_id_bytes(&last_variant);
+                    let length_after_id_unpack = find_attr_by_name(&ienum.attrs, "length_after_id").map(|f| quote! { 
+                        bytes.unpack_length::<#f>()?;
+                    });
+                    let length_after_id_pack = find_attr_by_name(&ienum.attrs, "length_after_id").map(|f| quote! { 
+                        bytes.pack_length::<#f>()?;
+                    });
                     for variant in &ienum.variants {
                         
                         // Match variant id bytes (&[0x01, 0x02] or _ which is the passthrough)
@@ -252,6 +269,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                             item: genitem.clone(),
                             wrapper: |fields| quote! {
                                 #pack_id_bytes
+                                #length_after_id_pack
                                 #(#fields)*
                             },
                             destructrurer: packing_callback,
@@ -260,6 +278,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                         unpackers.push(match id_bytes {
                             IdBytes::Bytes(token_stream) => quote! {
                                 if bytes.next_if_eq(#token_stream) {
+                                    #length_after_id_unpack
                                     return Ok(#unpack);
                                 }
                             },
@@ -285,7 +304,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                                 #err_or_nothing
                             }
                             fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-                                #object_packer
+                                #object_pack_length
                                 match self {
                                     #(#packers)*
                                 };
@@ -339,6 +358,7 @@ mod tests {
             /// id = &[0x99]
             struct ThirdStruct;
 
+            /// length_after_id = u8
             enum MyEnum {
                 /// id = &[0x01, 0x02]
                 NamedVariant { field: u32, field2: String },
@@ -417,15 +437,18 @@ mod tests {
                 impl FromToPacket for MyEnum {
                     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
                         if bytes.next_if_eq(&[0x01, 0x02]) {
+                            bytes.unpack_length::<u8>()?;
                             return Ok(MyEnum::NamedVariant {
                                 field: bytes.unpack()?,
                                 field2: bytes.unpack()?,
                             });
                         }
                         if bytes.next_if_eq(&[0x03]) {
+                            bytes.unpack_length::<u8>()?;
                             return Ok(MyEnum::UnnamedVariant(bytes.unpack()?, bytes.unpack()?));
                         }
                         if bytes.next_if_eq(&[0x04]) {
+                            bytes.unpack_length::<u8>()?;
                             return Ok(MyEnum::UnitVariant);
                         }
                         Err(
@@ -438,16 +461,19 @@ mod tests {
                         match self {
                             MyEnum::NamedVariant { field, field2 } => {
                                 bytes.pack_bytes(&[0x01, 0x02])?;
+                                bytes.pack_length::<u8>()?;
                                 bytes.pack(field)?;
                                 bytes.pack(field2)?;
                             },
                             MyEnum::UnnamedVariant(m0, m1) => {
                                 bytes.pack_bytes(&[0x03])?;
+                                bytes.pack_length::<u8>()?;
                                 bytes.pack(m0)?;
                                 bytes.pack(m1)?;
                             },
                             MyEnum::UnitVariant => {
                                 bytes.pack_bytes(&[0x04])?;
+                                bytes.pack_length::<u8>()?;
                             }
                         };
                         Ok(())

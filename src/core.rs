@@ -62,47 +62,16 @@ pub enum SmpPdu {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AclMessage {
-    // Id is:
-    //        +-------------------------------------------+
-    //        | ACL LEN  | L2CAP LEN | L2CAP CID | OPCODE |
-    //        | 2 bytes  | 2 bytes   | 2 bytes   | 1 byte |
-    //        +-------------------------------------------+
-    //
-    /// id = &[0x15, 0x00, 0x11, 0x00, 0x06, 0x00, 0x03]
-    SmpPairingConfirmation { confirm_value: u128 },
-    /// id = &[0x15, 0x00, 0x11, 0x00, 0x06, 0x00, 0x04]
-    SmpPairingRandom { random_value: u128 },
-    /// id = &[0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x01]
-    SmpPairingRequest {
-        io_capability: IOCapability,
-        oob_data_flag: OOBDataFlag,
-        authentication_requirements: AuthenticationRequirements,
-        max_encryption_key_size: u8,
-        initiator_key_distribution: KeyDistributionFlags,
-        responder_key_distribution: KeyDistributionFlags,
-    },
-    /// id = &[0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x02]
-    SmpPairingResponse {
-        io_capability: IOCapability,
-        oob_data_flag: OOBDataFlag,
-        authentication_requirements: AuthenticationRequirements,
-        max_encryption_key_size: u8,
-        initiator_key_distribution: KeyDistributionFlags,
-        responder_key_distribution: KeyDistributionFlags,
-    },
-}
-
+/// length_after_id = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HciCommand {
-    /// id = &[0x03, 0x0C, 0x00]
+    /// id = &[0x03, 0x0C]
     Reset,
 
     /// id = &[0x01, 0x0c]
     SetEventMask { event_mask: u64 },
 
-    /// id = &[0x01, 0x20, 0x08]
+    /// id = &[0x01, 0x20]
     LeSetEventMask { event_mask: u64 },
 }
 
@@ -283,6 +252,43 @@ mod tests {
         let mut packet = Packet::from_slice(&[0x00]);
         let handle = Role::from_packet(&mut packet).unwrap();
         assert_eq!(handle, Role::Central);
+    }
+
+    #[test]
+    fn test_hci_command_reset() {
+        let mut packet = Packet::from_slice(&[0x03, 0x0C, 0x00]);
+        let handle = HciCommand::from_packet(&mut packet).unwrap();
+        assert_eq!(handle, HciCommand::Reset);
+
+        let mut packet = Packet::new();
+        packet.pack(&HciCommand::Reset).unwrap();
+        assert_eq!(packet.get_bytes(), &[0x03, 0x0C, 0x00]);
+    }
+
+    #[test]
+    fn test_hci_command_set_event_mask() {
+        let mut packet =
+            Packet::from_slice(&[0x1, 0xc, 0x8, 0xff, 0xff, 0xfb, 0xff, 0x7, 0xf8, 0xbf, 0x3d]);
+        let handle = HciCommand::from_packet(&mut packet).unwrap();
+        assert_eq!(
+            handle,
+            HciCommand::SetEventMask {
+                event_mask: 4449547670108504063
+            }
+        );
+
+        let mut packet = Packet::new();
+        packet
+            .pack(&HciCommand::SetEventMask {
+                event_mask: 4449547670108504063,
+            })
+            .unwrap();
+        assert_eq!(
+            packet.get_bytes(),
+            &[
+                0x01, 0x0c, 0x08, 0xff, 0xff, 0xfb, 0xff, 0x7, 0xf8, 0xbf, 0x3d
+            ]
+        );
     }
 
     #[test]
