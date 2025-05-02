@@ -73,8 +73,11 @@ pub enum HciCommand {
     /// id = &[0x01, 0x0c]
     SetEventMask { event_mask: u64 },
 
-    /// id = &[0x01, 0x20]
-    LeSetEventMask { event_mask: u64 },
+    /// id = &[0x02, 0x10]
+    ReadLocalSupportedCommands,
+
+    /// id = &[0x09, 0x10]
+    ReadBdAddr,
 
     /// id = &[0x1a, 0x0C]
     WriteScanEnable(ScanEnable),
@@ -85,14 +88,15 @@ pub enum HciCommand {
     /// id = &[0x18, 0x0C]
     WritePageTimeout(u16),
 
-    /// id = &[0x02, 0x10]
-    ReadLocalSupportedCommands,
-
-    /// id = &[0x09, 0x10]
-    ReadBdAddr,
+    // Le group events (0x20)
+    /// id = &[0x01, 0x20]
+    LeSetEventMask { event_mask: u64 },
 
     /// id = &[0x02, 0x20]
     LeReadBufferSize,
+
+    /// id = &[0x05, 0x20]
+    LeSetRandomAddress(BdAddr),
 
     /// id = &[0x13, 0x0c]
     WriteLocalName(FixedSizeUtf8<248>),
@@ -197,6 +201,9 @@ pub enum ClockAccuracy {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ConnectionHandle(pub u16); // max value 0x0EFF
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BdAddr(pub [u8; 6]);
 
 // SMP
 
