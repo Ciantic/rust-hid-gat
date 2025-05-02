@@ -217,6 +217,39 @@ pub trait FromToPacket {
 //     }
 // }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FixedSizeUtf8<const N: usize>(String);
+
+impl<const N: usize> FixedSizeUtf8<N> {
+    pub fn new(string: &str) -> Self {
+        FixedSizeUtf8(string.to_string())
+    }
+
+    pub fn get(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<const N: usize> FromToPacket for FixedSizeUtf8<N> {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        let bytes = bytes.unpack_bytes(N)?;
+        let bytes = bytes.split(|&b| b == 0).next().unwrap_or(&[]);
+        let string = String::from_utf8(bytes.to_vec()).map_err(|_| PacketError::InvalidBytes)?;
+        Ok(FixedSizeUtf8(string))
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        let str = self.0.as_bytes();
+        if str.len() > N {
+            return Err(PacketError::InvalidBytes);
+        }
+        bytes.pack_bytes(str)?;
+        if str.len() < N {
+            bytes.pack_bytes(&vec![0; N - str.len()])?;
+        }
+        Ok(())
+    }
+}
+
 impl FromToPacket for bool {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         let res = bytes.unpack_bytes(1)?;

@@ -174,6 +174,41 @@ impl FromToPacket for HciCommand {
                 event_mask: bytes.unpack()?,
             });
         }
+        if bytes.next_if_eq(&[0x1a, 0x0C]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::WriteScanEnable(bytes.unpack()?));
+        }
+        if bytes.next_if_eq(&[0x16, 0x0C]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::WriteConnectionAcceptTimeout(bytes.unpack()?));
+        }
+        if bytes.next_if_eq(&[0x18, 0x0C]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::WritePageTimeout(bytes.unpack()?));
+        }
+        if bytes.next_if_eq(&[0x02, 0x10]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::ReadLocalSupportedCommands);
+        }
+        if bytes.next_if_eq(&[0x09, 0x10]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::ReadBdAddr);
+        }
+        if bytes.next_if_eq(&[0x02, 0x20]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeReadBufferSize);
+        }
+        if bytes.next_if_eq(&[0x13, 0x0c]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::WriteLocalName(bytes.unpack()?));
+        }
+        if bytes.next_if_eq(&[0x14, 0x0c]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::ReadLocalName {
+                status: bytes.unpack()?,
+                name: bytes.unpack()?,
+            });
+        }
         Err(
             PacketError::Unspecified(
                 format!("No matching variant found for {}", stringify!(HciCommand)),
@@ -195,6 +230,82 @@ impl FromToPacket for HciCommand {
                 bytes.pack_bytes(&[0x01, 0x20])?;
                 bytes.pack_length::<u8>()?;
                 bytes.pack(event_mask)?;
+            }
+            HciCommand::WriteScanEnable(m0) => {
+                bytes.pack_bytes(&[0x1a, 0x0C])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::WriteConnectionAcceptTimeout(m0) => {
+                bytes.pack_bytes(&[0x16, 0x0C])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::WritePageTimeout(m0) => {
+                bytes.pack_bytes(&[0x18, 0x0C])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::ReadLocalSupportedCommands => {
+                bytes.pack_bytes(&[0x02, 0x10])?;
+                bytes.pack_length::<u8>()?;
+            }
+            HciCommand::ReadBdAddr => {
+                bytes.pack_bytes(&[0x09, 0x10])?;
+                bytes.pack_length::<u8>()?;
+            }
+            HciCommand::LeReadBufferSize => {
+                bytes.pack_bytes(&[0x02, 0x20])?;
+                bytes.pack_length::<u8>()?;
+            }
+            HciCommand::WriteLocalName(m0) => {
+                bytes.pack_bytes(&[0x13, 0x0c])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::ReadLocalName { status, name } => {
+                bytes.pack_bytes(&[0x14, 0x0c])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(status)?;
+                bytes.pack(name)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for ScanEnable {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        if bytes.next_if_eq(&[0x00]) {
+            return Ok(ScanEnable::NoScans);
+        }
+        if bytes.next_if_eq(&[0x01]) {
+            return Ok(ScanEnable::InquiryScanEnabled_PageScanDisabled);
+        }
+        if bytes.next_if_eq(&[0x02]) {
+            return Ok(ScanEnable::InquiryScanDisabled_PageScanEnabled);
+        }
+        if bytes.next_if_eq(&[0x03]) {
+            return Ok(ScanEnable::InquiryScanEnabled_PageScanEnabled);
+        }
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(ScanEnable)),
+            ),
+        )
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            ScanEnable::NoScans => {
+                bytes.pack_bytes(&[0x00])?;
+            }
+            ScanEnable::InquiryScanEnabled_PageScanDisabled => {
+                bytes.pack_bytes(&[0x01])?;
+            }
+            ScanEnable::InquiryScanDisabled_PageScanEnabled => {
+                bytes.pack_bytes(&[0x02])?;
+            }
+            ScanEnable::InquiryScanEnabled_PageScanEnabled => {
+                bytes.pack_bytes(&[0x03])?;
             }
         };
         Ok(())
