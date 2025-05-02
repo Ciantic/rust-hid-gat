@@ -168,11 +168,13 @@ impl FromToPacket for HciCommand {
                 event_mask: bytes.unpack()?,
             });
         }
-        if bytes.next_if_eq(&[0x01, 0x20]) {
+        if bytes.next_if_eq(&[0x02, 0x10]) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::LeSetEventMask {
-                event_mask: bytes.unpack()?,
-            });
+            return Ok(HciCommand::ReadLocalSupportedCommands);
+        }
+        if bytes.next_if_eq(&[0x09, 0x10]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::ReadBdAddr);
         }
         if bytes.next_if_eq(&[0x1a, 0x0C]) {
             bytes.unpack_length::<u8>()?;
@@ -186,17 +188,19 @@ impl FromToPacket for HciCommand {
             bytes.unpack_length::<u8>()?;
             return Ok(HciCommand::WritePageTimeout(bytes.unpack()?));
         }
-        if bytes.next_if_eq(&[0x02, 0x10]) {
+        if bytes.next_if_eq(&[0x01, 0x20]) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::ReadLocalSupportedCommands);
-        }
-        if bytes.next_if_eq(&[0x09, 0x10]) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::ReadBdAddr);
+            return Ok(HciCommand::LeSetEventMask {
+                event_mask: bytes.unpack()?,
+            });
         }
         if bytes.next_if_eq(&[0x02, 0x20]) {
             bytes.unpack_length::<u8>()?;
             return Ok(HciCommand::LeReadBufferSize);
+        }
+        if bytes.next_if_eq(&[0x05, 0x20]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeSetRandomAddress(bytes.unpack()?));
         }
         if bytes.next_if_eq(&[0x13, 0x0c]) {
             bytes.unpack_length::<u8>()?;
@@ -226,10 +230,13 @@ impl FromToPacket for HciCommand {
                 bytes.pack_length::<u8>()?;
                 bytes.pack(event_mask)?;
             }
-            HciCommand::LeSetEventMask { event_mask } => {
-                bytes.pack_bytes(&[0x01, 0x20])?;
+            HciCommand::ReadLocalSupportedCommands => {
+                bytes.pack_bytes(&[0x02, 0x10])?;
                 bytes.pack_length::<u8>()?;
-                bytes.pack(event_mask)?;
+            }
+            HciCommand::ReadBdAddr => {
+                bytes.pack_bytes(&[0x09, 0x10])?;
+                bytes.pack_length::<u8>()?;
             }
             HciCommand::WriteScanEnable(m0) => {
                 bytes.pack_bytes(&[0x1a, 0x0C])?;
@@ -246,17 +253,19 @@ impl FromToPacket for HciCommand {
                 bytes.pack_length::<u8>()?;
                 bytes.pack(m0)?;
             }
-            HciCommand::ReadLocalSupportedCommands => {
-                bytes.pack_bytes(&[0x02, 0x10])?;
+            HciCommand::LeSetEventMask { event_mask } => {
+                bytes.pack_bytes(&[0x01, 0x20])?;
                 bytes.pack_length::<u8>()?;
-            }
-            HciCommand::ReadBdAddr => {
-                bytes.pack_bytes(&[0x09, 0x10])?;
-                bytes.pack_length::<u8>()?;
+                bytes.pack(event_mask)?;
             }
             HciCommand::LeReadBufferSize => {
                 bytes.pack_bytes(&[0x02, 0x20])?;
                 bytes.pack_length::<u8>()?;
+            }
+            HciCommand::LeSetRandomAddress(m0) => {
+                bytes.pack_bytes(&[0x05, 0x20])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
             }
             HciCommand::WriteLocalName(m0) => {
                 bytes.pack_bytes(&[0x13, 0x0c])?;
@@ -600,6 +609,19 @@ impl FromToPacket for ConnectionHandle {
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
             ConnectionHandle(m0) => {
+                bytes.pack(m0)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for BdAddr {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(BdAddr(bytes.unpack()?))
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            BdAddr(m0) => {
                 bytes.pack(m0)?;
             }
         };
