@@ -1,5 +1,4 @@
-use core::num;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 /// Set bits from a byte array into a target byte array based on the specified
 /// bit range, assumes little-endian byte order.
@@ -162,60 +161,7 @@ pub trait FromToPacket {
     where
         Self: Sized;
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError>;
-
-    // Helpers
-
-    // fn from_packet_with(
-    //     bytes: &mut Packet,
-    //     instruction: BitsetInstruction,
-    // ) -> Result<Self, PacketError>
-    // where
-    //     Self: Sized,
-    // {
-    //     bytes.push_instruction(instruction);
-    //     Self::from_packet(bytes)
-    // }
-
-    // fn from_packet_bits(bytes: &mut Packet, bits: (usize, usize)) -> Result<Self, PacketError>
-    // where
-    //     Self: Sized,
-    // {
-    //     let instruction = BitsetInstruction { bits, advance: 0 };
-    //     Self::from_packet_with(bytes, instruction)
-    // }
-
-    // fn to_packet_with(
-    //     &self,
-    //     bytes: &mut Packet,
-    //     instruction: BitsetInstruction,
-    // ) -> Result<(), PacketError> {
-    //     bytes.push_instruction(instruction);
-    //     self.to_packet(bytes)
-    // }
-
-    // fn to_packet_bits(&self, bytes: &mut Packet, bits: (usize, usize)) -> Result<(), PacketError> {
-    //     let instruction = BitsetInstruction { bits, advance: 0 };
-    //     self.to_packet_with(bytes, instruction)
-    // }
 }
-
-// pub trait FromToBytes {
-//     type ByteArray: AsRef<[u8]>; // = [u8; 8], etc.
-//     fn to_bytes(&self) -> Self::ByteArray;
-//     fn from_bytes(bytes: &[u8]) -> Result<Self, PacketError>
-//     where
-//         Self: Sized;
-// }
-
-// impl FromToBytes for bool {
-//     type ByteArray = [u8; 1];
-//     fn to_bytes(&self) -> Self::ByteArray {
-//         [if *self { 1 } else { 0 }]
-//     }
-//     fn from_bytes(bytes: &[u8]) -> Result<Self, PacketError> {
-//         Ok(*bytes.get(0).ok_or(PacketError::InvalidBytes)? == 1_u8)
-//     }
-// }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixedSizeUtf8<const N: usize>(String);
@@ -244,7 +190,7 @@ impl<const N: usize> FromToPacket for FixedSizeUtf8<N> {
         }
         bytes.pack_bytes(str)?;
         if str.len() < N {
-            bytes.pack_bytes(&vec![0; N - str.len()])?;
+            bytes.pack_bytes(vec![0; N - str.len()])?;
         }
         Ok(())
     }
@@ -269,7 +215,7 @@ impl<const T: usize> FromToPacket for [u8; T] {
         Ok(result)
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-        bytes.pack_bytes(&self)?;
+        bytes.pack_bytes(*self)?;
         Ok(())
     }
 }
@@ -325,13 +271,7 @@ pub enum PacketError {
     NotEnoughBytes,
     InvalidInstruction,
     InvalidBytes,
-    InvalidBits,
     Unspecified(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-struct BitsetInstruction {
-    bits: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -345,8 +285,8 @@ struct LengthPosition {
 pub struct Packet {
     position: usize,
     bit_position: usize,
+    bits: usize,
     data: Vec<u8>,
-    instructions: Vec<BitsetInstruction>,
     length_positions: HashSet<LengthPosition>,
 }
 
@@ -361,18 +301,8 @@ impl Packet {
         Packet {
             position: 0,
             bit_position: 0,
+            bits: 0,
             data: Vec::new(),
-            instructions: Vec::new(),
-            length_positions: HashSet::new(),
-        }
-    }
-
-    pub fn from_vec(bytes: Vec<u8>) -> Self {
-        Packet {
-            position: 0,
-            bit_position: 0,
-            data: bytes,
-            instructions: Vec::new(),
             length_positions: HashSet::new(),
         }
     }
@@ -381,19 +311,10 @@ impl Packet {
         Packet {
             position: 0,
             bit_position: 0,
+            bits: 0,
             data: bytes.to_vec(),
-            instructions: Vec::new(),
             length_positions: HashSet::new(),
         }
-    }
-
-    pub fn dump_state(&self) {
-        println!(
-            "Packet state: position: {}, bit_position: {}",
-            self.position, self.bit_position
-        );
-        println!("Data: {:?}", self.data);
-        println!("Instructions: {:?}", self.instructions);
     }
 
     pub fn get_bytes(&mut self) -> &[u8] {
@@ -414,62 +335,35 @@ impl Packet {
         &self.data
     }
 
-    // pub fn next<T: Sized>(&mut self) -> Result<(), PacketError> {
-    //     let size = std::mem::size_of::<T>();
-    //     if (self.position + size) > self.data.len() {
-    //         return Err(PacketError::NotEnoughBytes);
-    //     }
-    //     self.position += size;
-    //     self.bit_position = 0;
-    //     Ok(())
-    // }
+    pub fn next_if_eq<T>(&mut self, bytes_eq: &T) -> bool
+    where
+        T: FromToPacket + Eq,
+    {
+        let pos = self.position;
+        let bits = self.bits;
+        let bit_position = self.bit_position;
 
-    pub fn rewind(&mut self) {
-        self.position = 0;
-        self.bit_position = 0;
-    }
-
-    pub fn next_if_eq(&mut self, bytes_eq: &[u8]) -> bool {
-        if let Some(instruction) = self.instructions.last() {
-            let bits: usize = instruction.bits;
-            let byte_count = (self.bit_position + bits + 7) / 8;
-            let end_bit = self.bit_position + bits - 1;
-            if self.position + byte_count > self.data.len() {
-                return false;
+        if let Ok(val) = T::from_packet(self) {
+            if val == *bytes_eq {
+                return true;
             }
-
-            let res = get_bits_le(
-                &self.data[self.position..self.position + byte_count],
-                (self.bit_position, end_bit),
-            ) == bytes_eq;
-            if res {
-                self.bit_position = (end_bit + 1) % 8;
-                self.position += (self.bit_position + instruction.bits) / 8;
-                self.instructions.pop();
-            }
-            res
-        } else {
-            let res = self
-                .data
-                .get(self.position..self.position + bytes_eq.len())
-                .map_or(false, |slice| slice == bytes_eq);
-            if res {
-                self.bit_position = 0;
-                self.position += bytes_eq.len();
-            }
-            res
         }
+
+        // Reset position and bit position if unpack fails
+        self.position = pos;
+        self.bit_position = bit_position;
+        self.bits = bits;
+        false
     }
 
     pub fn set_bits(&mut self, size: usize) -> &mut Self {
-        let instruction = BitsetInstruction { bits: size };
-        self.instructions.push(instruction);
+        self.bits = size;
         self
     }
 
     pub fn pack_length<T: FromToPacket + Default>(&mut self) -> Result<&mut Self, PacketError> {
         // Only allow packing length if no instructions are present
-        if !self.instructions.is_empty() {
+        if self.bits != 0 {
             return Err(PacketError::InvalidInstruction);
         }
 
@@ -480,7 +374,7 @@ impl Packet {
             bytes,
         });
 
-        self.pack_bytes(&vec![0; bytes])?;
+        self.pack_bytes(vec![0; bytes])?;
         Ok(self)
     }
 
@@ -488,8 +382,8 @@ impl Packet {
         &mut self,
         offset: i32,
     ) -> Result<&mut Self, PacketError> {
-        // Only allow packing length if no instructions are present
-        if !self.instructions.is_empty() {
+        // Only allow packing length if bit width is 0
+        if self.bits != 0 {
             return Err(PacketError::InvalidInstruction);
         }
 
@@ -500,13 +394,13 @@ impl Packet {
             bytes,
         });
 
-        self.pack_bytes(&vec![0; bytes])?;
+        self.pack_bytes(vec![0; bytes])?;
         Ok(self)
     }
 
     pub fn unpack_length<T: FromToPacket>(&mut self) -> Result<&mut Self, PacketError> {
-        // Only allow unpacking length if no instructions are present
-        if !self.instructions.is_empty() {
+        // Only allow packing length if bit width is 0
+        if self.bits != 0 {
             return Err(PacketError::InvalidInstruction);
         }
 
@@ -520,43 +414,29 @@ impl Packet {
     }
 
     pub fn pack<T: FromToPacket>(&mut self, bytes: &T) -> Result<&mut Self, PacketError> {
-        println!("Packing type {:?}", std::any::type_name::<T>());
         bytes.to_packet(self)?;
         Ok(self)
     }
 
-    pub fn pack_bytes<T: AsRef<[u8]>>(&mut self, bytes: T) -> Result<&mut Self, PacketError> {
-        let bytes = bytes.as_ref();
-        if let Some(instruction) = self.instructions.last() {
-            if instruction.bits == 0 {
-                return Err(PacketError::InvalidInstruction);
-            }
-
+    fn pack_bytes<T: Into<Vec<u8>>>(&mut self, bytes: T) -> Result<&mut Self, PacketError> {
+        let bytes: Vec<u8> = bytes.into();
+        if self.bits != 0 {
             // Use instruction.bits as *length* of the instruction
-            let byte_count = (self.bit_position + instruction.bits + 7) / 8;
+            let byte_count = (self.bit_position + self.bits + 7) / 8;
 
             // Resize to accommodate the instruction size
             if self.data.len() < self.position + byte_count {
-                println!(
-                    "Resizing data from {} to {}",
-                    self.data.len(),
-                    self.position + byte_count
-                );
                 self.data.resize(self.position + byte_count, 0);
             }
 
             // Note: bit_position is guaranteed to be 0-7
-            let end_bit = self.bit_position + instruction.bits - 1;
+            let end_bit = self.bit_position + self.bits - 1;
 
             // Get n-amount of bits from the `bytes` to be stored in the `data` array
-            let input_bytes = get_bits_le(&bytes, (0, instruction.bits - 1));
+            let input_bytes = get_bits_le(&bytes, (0, self.bits - 1));
             let mut mut_bytes = &mut self.data[self.position..self.position + byte_count];
             set_bits_le(&mut mut_bytes, (self.bit_position, end_bit), &input_bytes);
-            println!(
-                "Wrote bytes hex: {:?}",
-                &self.data[self.position..self.position + byte_count]
-            );
-            println!("Wrote byte count: {}", byte_count);
+            self.progress_bits();
 
             // for i in 0..byte_count {
             //     let byte_index = self.position + i;
@@ -576,49 +456,39 @@ impl Packet {
             //     let extracted_bits = input_byte & input_mask;
             //     self.data[byte_index] |= extracted_bits << start_bit_in_byte;
             // }
-
-            // Position needs to be updated as many times as full bytes were written
-            self.position += (self.bit_position + instruction.bits) / 8;
-            self.bit_position = (end_bit + 1) % 8;
-
-            self.instructions.pop();
         } else {
-            // Normal packing ignores the bit position, and reset it to 0
-            self.bit_position = 0;
-
             let size = bytes.len();
             if self.data.len() < self.position + size {
                 self.data.resize(self.position + size, 0);
             }
 
             // No instruction, just copy the bytes
-            self.data[self.position..self.position + size].copy_from_slice(bytes);
-            println!(
-                "Wrote bytes hex: {:?}",
-                &self.data[self.position..self.position + size]
-            );
-            println!("Wrote byte count: {}", size);
-            self.position += size;
+            self.data[self.position..self.position + size].copy_from_slice(&bytes);
+            self.progress_bytes(size);
         }
         Ok(self)
     }
 
     fn unpack_bytes(&mut self, size: usize) -> Result<Vec<u8>, PacketError> {
-        if let Some(instruction) = self.instructions.last() {
-            let byte_count = (self.bit_position + instruction.bits + 7) / 8;
+        let val = self.try_unpack_bytes(size)?;
+        if self.bits != 0 {
+            self.progress_bits();
+        } else {
+            self.progress_bytes(size);
+        }
+        Ok(val)
+    }
+
+    fn try_unpack_bytes(&self, size: usize) -> Result<Vec<u8>, PacketError> {
+        if self.bits != 0 {
+            let byte_count = (self.bit_position + self.bits + 7) / 8;
             if self.position + byte_count > self.data.len() {
                 return Err(PacketError::NotEnoughBytes);
             }
             let out = get_bits_le(
                 &self.data[self.position..self.position + byte_count],
-                (self.bit_position, self.bit_position + instruction.bits - 1),
+                (self.bit_position, self.bit_position + self.bits - 1),
             );
-
-            // Update the position and bit position
-            let end_bit = self.bit_position + instruction.bits - 1;
-            self.position += (self.bit_position + instruction.bits) / 8;
-            self.bit_position = (end_bit + 1) % 8;
-            self.instructions.pop();
             return Ok(out);
         }
         if self.position + size > self.data.len() {
@@ -626,14 +496,26 @@ impl Packet {
         }
         // No instruction, just copy the bytes
         let bytes = &self.data[self.position..self.position + size];
-        self.bit_position = 0; // Reset bit position
-        self.position += size;
         Ok(bytes.to_vec())
+    }
+
+    fn progress_bits(&mut self) {
+        let end_bit = self.bit_position + self.bits - 1;
+        self.position += (self.bit_position + self.bits) / 8;
+        self.bit_position = (end_bit + 1) % 8;
+        self.bits = 0;
+    }
+
+    fn progress_bytes(&mut self, bytes: usize) {
+        self.position += bytes;
+        self.bit_position = 0; // Reset bit position
+        self.bits = 0; // Reset bits after use
     }
 }
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
@@ -725,7 +607,7 @@ mod tests {
         let mut packet = Packet::new();
         // Length from *current* position to the end of the packet,
         packet.pack_length::<u8>().unwrap();
-        packet.pack_bytes(&[0xA, 0xB, 0xC]);
+        packet.pack_bytes(&[0xA, 0xB, 0xC]).unwrap();
         assert_eq!(packet.get_bytes(), &[0x03, 0xA, 0xB, 0xC]);
     }
 

@@ -23,7 +23,7 @@ fn build_unitstruct_packer(attrs: &Vec<Attribute>, name: &Type) -> TokenStream {
     let mut ret = quote! {};
     if let Some(idbytes) = find_attr_by_name(&attrs, "id") {
         ret.extend(quote! {
-            bytes.pack_bytes(#idbytes)?;
+            bytes.pack(&#idbytes)?;
         })
     } else {
         panic!("No id found for {}", name.to_token_stream().to_string());
@@ -37,7 +37,7 @@ fn build_object_unpacker(attrs: &Vec<Attribute>, object_name: &Ident) -> TokenSt
     let mut ret = quote! {};
     if let Some(idbytes) = find_attr_by_name(&attrs, "id") {
         ret.extend(quote! {
-            if !bytes.next_if_eq(#idbytes) {
+            if !bytes.next_if_eq(&#idbytes) {
                 return Err(PacketError::Unspecified(format!("No matching bytes found for {}", stringify!(#object_name))));
             }
         })
@@ -165,7 +165,7 @@ fn get_id_bytes(variant: &syn::Variant) -> IdBytes {
     // Then try to find from discriminant e.g. `enum Bar { Foo = 0x01 }`
     if let Some((_, val)) = &variant.discriminant {
         return IdBytes::Bytes(quote! {
-            &[#val]
+            [#val]
         });
     }
     panic!("No id found for variant {:?}", variant.to_token_stream());
@@ -253,7 +253,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                         let id_bytes = get_id_bytes(variant);
                         let pack_id_bytes = match &id_bytes {
                             IdBytes::Bytes(id_bytes) => Some(quote! {
-                                bytes.pack_bytes(#id_bytes)?;
+                                bytes.pack(&#id_bytes)?;
                             }),
                             IdBytes::Passthrough => {
                                 None
@@ -277,7 +277,7 @@ pub fn implementer(items: &Vec<Item>) -> Vec<proc_macro2::TokenStream> {
                         packers.push(pack);
                         unpackers.push(match id_bytes {
                             IdBytes::Bytes(token_stream) => quote! {
-                                if bytes.next_if_eq(#token_stream) {
+                                if bytes.next_if_eq(&#token_stream) {
                                     #length_after_id_unpack
                                     return Ok(#unpack);
                                 }
@@ -355,24 +355,29 @@ mod tests {
 
             struct AnotherStruct(u32, String);
 
-            /// id = &[0x99]
+            /// id = [0x99]
             struct ThirdStruct;
 
             /// length_after_id = u8
             enum MyEnum {
-                /// id = &[0x01, 0x02]
+                /// id = [0x01, 0x02]
                 NamedVariant { field: u32, field2: String },
-                /// id = &[0x03]
+                /// id = [0x03]
                 UnnamedVariant(u32, String),
-                /// id = &[0x04]
+                /// id = [0x04]
                 UnitVariant,
             }
 
             enum Status {
-                /// id = &[0x01]
+                /// id = [0x01]
                 Success,
                 /// id = _
                 Error(u8)
+            }
+
+            enum SomeDiscriminantEnum {
+                Foo = 0x01,
+                Bar = 0x02,
             }
         };
         let res = syn::parse2::<syn::File>(input_file_contents).unwrap();
@@ -428,7 +433,7 @@ mod tests {
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
                             ThirdStruct => {
-                                bytes.pack_bytes(&[0x99])?;
+                                bytes.pack(&[0x99])?;
                             }
                         };
                         Ok(())
@@ -460,19 +465,19 @@ mod tests {
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
                             MyEnum::NamedVariant { field, field2 } => {
-                                bytes.pack_bytes(&[0x01, 0x02])?;
+                                bytes.pack(&[0x01, 0x02])?;
                                 bytes.pack_length::<u8>()?;
                                 bytes.pack(field)?;
                                 bytes.pack(field2)?;
                             },
                             MyEnum::UnnamedVariant(m0, m1) => {
-                                bytes.pack_bytes(&[0x03])?;
+                                bytes.pack(&[0x03])?;
                                 bytes.pack_length::<u8>()?;
                                 bytes.pack(m0)?;
                                 bytes.pack(m1)?;
                             },
                             MyEnum::UnitVariant => {
-                                bytes.pack_bytes(&[0x04])?;
+                                bytes.pack(&[0x04])?;
                                 bytes.pack_length::<u8>()?;
                             }
                         };
@@ -490,10 +495,40 @@ mod tests {
                     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
                         match self {
                             Status::Success => {
-                                bytes.pack_bytes(&[0x01])?;
+                                bytes.pack(&[0x01])?;
                             }
                             Status::Error(m0) => {
                                 bytes.pack(m0)?;
+                            }
+                        };
+                        Ok(())
+                    }
+                }
+
+
+                impl FromToPacket for SomeDiscriminantEnum {
+                    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                        if bytes.next_if_eq(&[0x01]) {
+                            return Ok(SomeDiscriminantEnum::Foo);
+                        }
+                        if bytes.next_if_eq(&[0x02]) {
+                            return Ok(SomeDiscriminantEnum::Bar);
+                        }
+                        Err(
+                            PacketError::Unspecified(
+                                format!(
+                                    "No matching variant found for {}", stringify!(SomeDiscriminantEnum)
+                                ),
+                            ),
+                        )
+                    }
+                    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+                        match self {
+                            SomeDiscriminantEnum::Foo => {
+                                bytes.pack(&[0x01])?;
+                            }
+                            SomeDiscriminantEnum::Bar => {
+                                bytes.pack(&[0x02])?;
                             }
                         };
                         Ok(())

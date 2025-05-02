@@ -2,11 +2,11 @@ use crate::packer::FixedSizeUtf8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum H4Packet {
-    /// id = &[0x01]
+    /// id = [0x01]
     HciCommand(HciCommand),
-    /// id = &[0x04]
+    /// id = [0x04]
     HciEvent(HciEventMsg),
-    /// id = &[0x02]
+    /// id = [0x02]
     HciAcl {
         /// bits = 12
         connection_handle: ConnectionHandle,
@@ -30,9 +30,9 @@ pub enum H4Packet {
 /// prepend_length_offset = -2
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum L2CapMessage {
-    /// id = &[0x06, 0x00]
+    /// id = [0x06, 0x00]
     Smp(SmpPdu),
-    /// id = &[0x04, 0x00]
+    /// id = [0x04, 0x00]
     Att,
     /// id = _
     Unknown(u16, Vec<u8>),
@@ -40,11 +40,11 @@ pub enum L2CapMessage {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SmpPdu {
-    /// id = &[0x03]
+    /// id = [0x03]
     SmpPairingConfirmation { confirm_value: u128 },
-    /// id = &[0x04]
+    /// id = [0x04]
     SmpPairingRandom { random_value: u128 },
-    /// id = &[0x01]
+    /// id = [0x01]
     SmpPairingRequest {
         io_capability: IOCapability,
         oob_data_flag: OOBDataFlag,
@@ -53,7 +53,7 @@ pub enum SmpPdu {
         initiator_key_distribution: KeyDistributionFlags,
         responder_key_distribution: KeyDistributionFlags,
     },
-    /// id = &[0x02]
+    /// id = [0x02]
     SmpPairingResponse {
         io_capability: IOCapability,
         oob_data_flag: OOBDataFlag,
@@ -67,62 +67,73 @@ pub enum SmpPdu {
 /// length_after_id = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HciCommand {
-    /// id = &[0x03, 0x0C]
+    /// id = OpCode(0x0003, 0x03)
     Reset,
 
-    /// id = &[0x01, 0x0c]
+    /// id = OpCode(0x0001, 0x03)
     SetEventMask { event_mask: u64 },
 
-    /// id = &[0x02, 0x10]
+    /// id = OpCode(0x0002, 0x04)
     ReadLocalSupportedCommands,
 
-    /// id = &[0x09, 0x10]
+    /// id = OpCode(0x0009, 0x04)
     ReadBdAddr,
 
-    /// id = &[0x1a, 0x0C]
+    /// id = OpCode(0x001a, 0x03)
     WriteScanEnable(ScanEnable),
 
-    /// id = &[0x16, 0x0C]
+    /// id = OpCode(0x0016, 0x03)
     WriteConnectionAcceptTimeout(u16),
 
-    /// id = &[0x18, 0x0C]
+    /// id = OpCode(0x0018, 0x03)
     WritePageTimeout(u16),
 
-    // Le group events (0x20)
-    /// id = &[0x01, 0x20]
+    /// id = OpCode(0x0001, 0x08)
     LeSetEventMask { event_mask: u64 },
 
-    /// id = &[0x02, 0x20]
+    /// id = OpCode(0x0002, 0x08)
     LeReadBufferSize,
 
-    /// id = &[0x05, 0x20]
+    /// id = OpCode(0x0005, 0x08)
     LeSetRandomAddress(BdAddr),
 
-    /// id = &[0x13, 0x0c]
+    /// id = OpCode(0x0013, 0x03)
     WriteLocalName(FixedSizeUtf8<248>),
 
-    /// id = &[0x14, 0x0c]
+    /// id = OpCode(0x0014, 0x03)
     ReadLocalName {
         status: HciStatus,
         name: FixedSizeUtf8<248>,
     },
 }
 
+/// HCI OpCode
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
+pub struct OpCode(
+    /// Command (OCF)
+    /// bits = 10
+    pub u16,
+    /// Group (OGF)
+    /// bits = 6
+    pub u8,
+);
+
+#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScanEnable {
-    /// id = &[0x00]
+    /// id = [0x00]
     NoScans,
-    /// id = &[0x01]
+    /// id = [0x01]
     InquiryScanEnabled_PageScanDisabled,
-    /// id = &[0x02]
+    /// id = [0x02]
     InquiryScanDisabled_PageScanEnabled,
-    /// id = &[0x03]
+    /// id = [0x03]
     InquiryScanEnabled_PageScanEnabled,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HciEventMsg {
-    /// id = &[0x3e, 0x13, 0x01]
+    /// id = [0x3e, 0x13, 0x01]
     LeConnectionComplete {
         status: HciStatus,
         connection_handle: u16,
@@ -134,13 +145,13 @@ pub enum HciEventMsg {
         supervision_timeout: u16,
         central_clock_accuracy: ClockAccuracy,
     },
-    /// id = &[0x0E, 0x04]
+    /// id = [0x0E, 0x04]
     CommandComplete {
         num_hci_command_packets: u8,
         command_opcode: u16,
         status: HciStatus,
     },
-    /// id = &[0x0F, 0x04]
+    /// id = [0x0F, 0x04]
     CommandStatus {
         status: HciStatus,
         num_hci_command_packets: u8,
@@ -169,7 +180,7 @@ pub enum BroadcastFlag {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum HciStatus {
-    /// id = &[0x00]
+    /// id = [0x00]
     Success,
     /// id = _
     Failure(u8),
