@@ -158,6 +158,13 @@ impl FromToPacket for SmpPdu {
 }
 impl FromToPacket for HciCommand {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        if bytes.next_if_eq(&OpCode(0x0006, 0x01)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::Disconnect {
+                connection_handle: bytes.unpack()?,
+                reason: bytes.unpack()?,
+            });
+        }
         if bytes.next_if_eq(&OpCode(0x0003, 0x03)) {
             bytes.unpack_length::<u8>()?;
             return Ok(HciCommand::Reset);
@@ -188,6 +195,17 @@ impl FromToPacket for HciCommand {
             bytes.unpack_length::<u8>()?;
             return Ok(HciCommand::WritePageTimeout(bytes.unpack()?));
         }
+        if bytes.next_if_eq(&OpCode(0x0013, 0x03)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::WriteLocalName(bytes.unpack()?));
+        }
+        if bytes.next_if_eq(&OpCode(0x0014, 0x03)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::ReadLocalName {
+                status: bytes.unpack()?,
+                name: bytes.unpack()?,
+            });
+        }
         if bytes.next_if_eq(&OpCode(0x0001, 0x08)) {
             bytes.unpack_length::<u8>()?;
             return Ok(HciCommand::LeSetEventMask {
@@ -202,15 +220,47 @@ impl FromToPacket for HciCommand {
             bytes.unpack_length::<u8>()?;
             return Ok(HciCommand::LeSetRandomAddress(bytes.unpack()?));
         }
-        if bytes.next_if_eq(&OpCode(0x0013, 0x03)) {
+        if bytes.next_if_eq(&OpCode(0x0006, 0x08)) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::WriteLocalName(bytes.unpack()?));
+            return Ok(HciCommand::LeSetAdvertisingParameters {
+                advertising_interval_min: bytes.unpack()?,
+                advertising_interval_max: bytes.unpack()?,
+                advertising_type: bytes.unpack()?,
+                own_address_type: bytes.unpack()?,
+                peer_address_type: bytes.unpack()?,
+                peer_address: bytes.unpack()?,
+                advertising_channel_map: bytes.unpack()?,
+                advertising_filter_policy: bytes.unpack()?,
+            });
         }
-        if bytes.next_if_eq(&OpCode(0x0014, 0x03)) {
+        if bytes.next_if_eq(&OpCode(0x0008, 0x08)) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::ReadLocalName {
-                status: bytes.unpack()?,
-                name: bytes.unpack()?,
+            return Ok(HciCommand::LeSetAdvertisingData {
+                advertising_data_length: bytes.unpack()?,
+                advertising_data: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&OpCode(0x0025, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeReadLocalP256PublicKey);
+        }
+        if bytes.next_if_eq(&OpCode(0x000A, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeSetAdvertisingEnable(bytes.unpack()?));
+        }
+        if bytes.next_if_eq(&OpCode(0x0022, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeSetDataLength {
+                connection_handle: bytes.unpack()?,
+                tx_octets: bytes.unpack()?,
+                tx_time: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&OpCode(0x001A, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeLongTermKeyRequestReply {
+                connection_handle: bytes.unpack()?,
+                long_term_key: bytes.unpack()?,
             });
         }
         Err(
@@ -221,6 +271,12 @@ impl FromToPacket for HciCommand {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
+            HciCommand::Disconnect { connection_handle, reason } => {
+                bytes.pack(&OpCode(0x0006, 0x01))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(reason)?;
+            }
             HciCommand::Reset => {
                 bytes.pack(&OpCode(0x0003, 0x03))?;
                 bytes.pack_length::<u8>()?;
@@ -253,6 +309,17 @@ impl FromToPacket for HciCommand {
                 bytes.pack_length::<u8>()?;
                 bytes.pack(m0)?;
             }
+            HciCommand::WriteLocalName(m0) => {
+                bytes.pack(&OpCode(0x0013, 0x03))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::ReadLocalName { status, name } => {
+                bytes.pack(&OpCode(0x0014, 0x03))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(status)?;
+                bytes.pack(name)?;
+            }
             HciCommand::LeSetEventMask { event_mask } => {
                 bytes.pack(&OpCode(0x0001, 0x08))?;
                 bytes.pack_length::<u8>()?;
@@ -267,16 +334,60 @@ impl FromToPacket for HciCommand {
                 bytes.pack_length::<u8>()?;
                 bytes.pack(m0)?;
             }
-            HciCommand::WriteLocalName(m0) => {
-                bytes.pack(&OpCode(0x0013, 0x03))?;
+            HciCommand::LeSetAdvertisingParameters {
+                advertising_interval_min,
+                advertising_interval_max,
+                advertising_type,
+                own_address_type,
+                peer_address_type,
+                peer_address,
+                advertising_channel_map,
+                advertising_filter_policy,
+            } => {
+                bytes.pack(&OpCode(0x0006, 0x08))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(advertising_interval_min)?;
+                bytes.pack(advertising_interval_max)?;
+                bytes.pack(advertising_type)?;
+                bytes.pack(own_address_type)?;
+                bytes.pack(peer_address_type)?;
+                bytes.pack(peer_address)?;
+                bytes.pack(advertising_channel_map)?;
+                bytes.pack(advertising_filter_policy)?;
+            }
+            HciCommand::LeSetAdvertisingData {
+                advertising_data_length,
+                advertising_data,
+            } => {
+                bytes.pack(&OpCode(0x0008, 0x08))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(advertising_data_length)?;
+                bytes.pack(advertising_data)?;
+            }
+            HciCommand::LeReadLocalP256PublicKey => {
+                bytes.pack(&OpCode(0x0025, 0x08))?;
+                bytes.pack_length::<u8>()?;
+            }
+            HciCommand::LeSetAdvertisingEnable(m0) => {
+                bytes.pack(&OpCode(0x000A, 0x08))?;
                 bytes.pack_length::<u8>()?;
                 bytes.pack(m0)?;
             }
-            HciCommand::ReadLocalName { status, name } => {
-                bytes.pack(&OpCode(0x0014, 0x03))?;
+            HciCommand::LeSetDataLength { connection_handle, tx_octets, tx_time } => {
+                bytes.pack(&OpCode(0x0022, 0x08))?;
                 bytes.pack_length::<u8>()?;
-                bytes.pack(status)?;
-                bytes.pack(name)?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(tx_octets)?;
+                bytes.pack(tx_time)?;
+            }
+            HciCommand::LeLongTermKeyRequestReply {
+                connection_handle,
+                long_term_key,
+            } => {
+                bytes.pack(&OpCode(0x001A, 0x08))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(long_term_key)?;
             }
         };
         Ok(())
@@ -334,10 +445,10 @@ impl FromToPacket for ScanEnable {
         Ok(())
     }
 }
-impl FromToPacket for HciEventMsg {
+impl FromToPacket for LeMeta {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-        if bytes.next_if_eq(&[0x3e, 0x13, 0x01]) {
-            return Ok(HciEventMsg::LeConnectionComplete {
+        if bytes.next_if_eq(&[0x01]) {
+            return Ok(LeMeta::LeConnectionComplete {
                 status: bytes.unpack()?,
                 connection_handle: bytes.unpack()?,
                 role: bytes.unpack()?,
@@ -349,29 +460,49 @@ impl FromToPacket for HciEventMsg {
                 central_clock_accuracy: bytes.unpack()?,
             });
         }
-        if bytes.next_if_eq(&[0x0E, 0x04]) {
-            return Ok(HciEventMsg::CommandComplete {
-                num_hci_command_packets: bytes.unpack()?,
-                command_opcode: bytes.unpack()?,
+        if bytes.next_if_eq(&[0x02]) {
+            return Ok(LeMeta::LeAdvertisingReport(bytes.unpack()?));
+        }
+        if bytes.next_if_eq(&[0x03]) {
+            return Ok(LeMeta::LeConnectionUpdateComplete {
                 status: bytes.unpack()?,
+                connection_handle: bytes.unpack()?,
+                interval: bytes.unpack()?,
+                latency: bytes.unpack()?,
+                timeout: bytes.unpack()?,
             });
         }
-        if bytes.next_if_eq(&[0x0F, 0x04]) {
-            return Ok(HciEventMsg::CommandStatus {
+        if bytes.next_if_eq(&[0x05]) {
+            return Ok(LeMeta::LeLongTermKeyRequest {
+                connection_handle: bytes.unpack()?,
+                random_number: bytes.unpack()?,
+                encrypted_diversifier: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x07]) {
+            return Ok(LeMeta::LeDataLengthChange {
+                connection_handle: bytes.unpack()?,
+                max_tx_octets: bytes.unpack()?,
+                max_tx_time: bytes.unpack()?,
+                max_rx_octets: bytes.unpack()?,
+                max_rx_time: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x08]) {
+            return Ok(LeMeta::LeReadLocalP256PublicKeyComplete {
                 status: bytes.unpack()?,
-                num_hci_command_packets: bytes.unpack()?,
-                command_opcode: bytes.unpack()?,
+                public_key: bytes.unpack()?,
             });
         }
         Err(
             PacketError::Unspecified(
-                format!("No matching variant found for {}", stringify!(HciEventMsg)),
+                format!("No matching variant found for {}", stringify!(LeMeta)),
             ),
         )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            HciEventMsg::LeConnectionComplete {
+            LeMeta::LeConnectionComplete {
                 status,
                 connection_handle,
                 role,
@@ -382,7 +513,7 @@ impl FromToPacket for HciEventMsg {
                 supervision_timeout,
                 central_clock_accuracy,
             } => {
-                bytes.pack(&[0x3e, 0x13, 0x01])?;
+                bytes.pack(&[0x01])?;
                 bytes.pack(status)?;
                 bytes.pack(connection_handle)?;
                 bytes.pack(role)?;
@@ -393,25 +524,178 @@ impl FromToPacket for HciEventMsg {
                 bytes.pack(supervision_timeout)?;
                 bytes.pack(central_clock_accuracy)?;
             }
+            LeMeta::LeAdvertisingReport(m0) => {
+                bytes.pack(&[0x02])?;
+                bytes.pack(m0)?;
+            }
+            LeMeta::LeConnectionUpdateComplete {
+                status,
+                connection_handle,
+                interval,
+                latency,
+                timeout,
+            } => {
+                bytes.pack(&[0x03])?;
+                bytes.pack(status)?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(interval)?;
+                bytes.pack(latency)?;
+                bytes.pack(timeout)?;
+            }
+            LeMeta::LeLongTermKeyRequest {
+                connection_handle,
+                random_number,
+                encrypted_diversifier,
+            } => {
+                bytes.pack(&[0x05])?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(random_number)?;
+                bytes.pack(encrypted_diversifier)?;
+            }
+            LeMeta::LeDataLengthChange {
+                connection_handle,
+                max_tx_octets,
+                max_tx_time,
+                max_rx_octets,
+                max_rx_time,
+            } => {
+                bytes.pack(&[0x07])?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(max_tx_octets)?;
+                bytes.pack(max_tx_time)?;
+                bytes.pack(max_rx_octets)?;
+                bytes.pack(max_rx_time)?;
+            }
+            LeMeta::LeReadLocalP256PublicKeyComplete { status, public_key } => {
+                bytes.pack(&[0x08])?;
+                bytes.pack(status)?;
+                bytes.pack(public_key)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for HciEventMsg {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        if bytes.next_if_eq(&[0x05]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEventMsg::DisconnectComplete {
+                status: bytes.unpack()?,
+                connection_handle: bytes.unpack()?,
+                reason: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x08]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEventMsg::EncryptionChange {
+                status: bytes.unpack()?,
+                connection_handle: bytes.unpack()?,
+                encryption_enabled: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x13]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEventMsg::NumberOfCompletedPackets {
+                num_hci_command_packets: bytes.unpack()?,
+                connection_handle: bytes.unpack()?,
+                num_completed_packets: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x3e]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEventMsg::LeMeta(bytes.unpack()?));
+        }
+        if bytes.next_if_eq(&[0x0E]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEventMsg::CommandComplete {
+                num_hci_command_packets: bytes.unpack()?,
+                command_opcode: bytes.unpack()?,
+                status: bytes.unpack()?,
+                data: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x0F]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEventMsg::CommandStatus {
+                status: bytes.unpack()?,
+                num_hci_command_packets: bytes.unpack()?,
+                command_opcode: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0xFF]) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEventMsg::VendorSpecific(bytes.unpack()?));
+        }
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(HciEventMsg)),
+            ),
+        )
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            HciEventMsg::DisconnectComplete { status, connection_handle, reason } => {
+                bytes.pack(&[0x05])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(status)?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(reason)?;
+            }
+            HciEventMsg::EncryptionChange {
+                status,
+                connection_handle,
+                encryption_enabled,
+            } => {
+                bytes.pack(&[0x08])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(status)?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(encryption_enabled)?;
+            }
+            HciEventMsg::NumberOfCompletedPackets {
+                num_hci_command_packets,
+                connection_handle,
+                num_completed_packets,
+            } => {
+                bytes.pack(&[0x13])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(num_hci_command_packets)?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(num_completed_packets)?;
+            }
+            HciEventMsg::LeMeta(m0) => {
+                bytes.pack(&[0x3e])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
             HciEventMsg::CommandComplete {
                 num_hci_command_packets,
                 command_opcode,
                 status,
+                data,
             } => {
-                bytes.pack(&[0x0E, 0x04])?;
+                bytes.pack(&[0x0E])?;
+                bytes.pack_length::<u8>()?;
                 bytes.pack(num_hci_command_packets)?;
                 bytes.pack(command_opcode)?;
                 bytes.pack(status)?;
+                bytes.pack(data)?;
             }
             HciEventMsg::CommandStatus {
                 status,
                 num_hci_command_packets,
                 command_opcode,
             } => {
-                bytes.pack(&[0x0F, 0x04])?;
+                bytes.pack(&[0x0F])?;
+                bytes.pack_length::<u8>()?;
                 bytes.pack(status)?;
                 bytes.pack(num_hci_command_packets)?;
                 bytes.pack(command_opcode)?;
+            }
+            HciEventMsg::VendorSpecific(m0) => {
+                bytes.pack(&[0xFF])?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
             }
         };
         Ok(())

@@ -163,6 +163,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "bt-only-headers"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "bt-hci",
+ "cipher",
+ "deku",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-sync",
+ "embassy-time",
+ "embedded-io",
+ "embedded-io-async",
+ "env_logger",
+ "facet",
+ "facet-reflect",
+ "libc",
+ "log",
+ "no_std_io",
+ "static_cell",
+ "tokio",
+ "trouble",
+ "trouble-host",
+ "trouble-host-macros",
+]
+
+[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -956,33 +983,6 @@ name = "regex-syntax"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
-
-[[package]]
-name = "rust-hid-gat"
-version = "0.1.0"
-dependencies = [
- "aes",
- "bt-hci",
- "cipher",
- "deku",
- "embassy-executor",
- "embassy-futures",
- "embassy-sync",
- "embassy-time",
- "embedded-io",
- "embedded-io-async",
- "env_logger",
- "facet",
- "facet-reflect",
- "libc",
- "log",
- "no_std_io",
- "static_cell",
- "tokio",
- "trouble",
- "trouble-host",
- "trouble-host-macros",
-]
 
 [[package]]
 name = "rustc-demangle"

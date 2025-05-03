@@ -1,4 +1,8 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    error::Error,
+    fmt::{Display, Formatter},
+};
 
 /// Set bits from a byte array into a target byte array based on the specified
 /// bit range, assumes little-endian byte order.
@@ -272,6 +276,28 @@ pub enum PacketError {
     InvalidInstruction,
     InvalidBytes,
     Unspecified(String),
+}
+
+impl Display for PacketError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PacketError::NotEnoughBytes => write!(f, "Not enough bytes"),
+            PacketError::InvalidInstruction => write!(f, "Invalid instruction"),
+            PacketError::InvalidBytes => write!(f, "Invalid bytes"),
+            PacketError::Unspecified(msg) => write!(f, "Unspecified: {}", msg),
+        }
+    }
+}
+
+impl Error for PacketError {
+    fn description(&self) -> &str {
+        match self {
+            PacketError::NotEnoughBytes => "Not enough bytes",
+            PacketError::InvalidInstruction => "Invalid instruction",
+            PacketError::InvalidBytes => "Invalid bytes",
+            PacketError::Unspecified(msg) => msg,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]

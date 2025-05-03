@@ -7,9 +7,9 @@ mod event;
 mod gatt;
 mod packets;
 // mod parrot
-mod core;
-mod core_gen;
-mod packer;
+pub mod core;
+pub mod core_gen;
+pub mod packer;
 mod primitives;
 mod smp;
 

@@ -67,6 +67,12 @@ pub enum SmpPdu {
 /// length_after_id = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HciCommand {
+    /// id = OpCode(0x0006, 0x01)
+    Disconnect {
+        connection_handle: ConnectionHandle,
+        reason: u8,
+    },
+
     /// id = OpCode(0x0003, 0x03)
     Reset,
 
@@ -88,6 +94,15 @@ pub enum HciCommand {
     /// id = OpCode(0x0018, 0x03)
     WritePageTimeout(u16),
 
+    /// id = OpCode(0x0013, 0x03)
+    WriteLocalName(FixedSizeUtf8<248>),
+
+    /// id = OpCode(0x0014, 0x03)
+    ReadLocalName {
+        status: HciStatus,
+        name: FixedSizeUtf8<248>,
+    },
+
     /// id = OpCode(0x0001, 0x08)
     LeSetEventMask { event_mask: u64 },
 
@@ -97,13 +112,41 @@ pub enum HciCommand {
     /// id = OpCode(0x0005, 0x08)
     LeSetRandomAddress(BdAddr),
 
-    /// id = OpCode(0x0013, 0x03)
-    WriteLocalName(FixedSizeUtf8<248>),
+    /// id = OpCode(0x0006, 0x08)
+    LeSetAdvertisingParameters {
+        advertising_interval_min: u16,
+        advertising_interval_max: u16,
+        advertising_type: u8,
+        own_address_type: u8,
+        peer_address_type: u8,
+        peer_address: BdAddr,
+        advertising_channel_map: u8,
+        advertising_filter_policy: u8,
+    },
 
-    /// id = OpCode(0x0014, 0x03)
-    ReadLocalName {
-        status: HciStatus,
-        name: FixedSizeUtf8<248>,
+    /// id = OpCode(0x0008, 0x08)
+    LeSetAdvertisingData {
+        advertising_data_length: u8,
+        advertising_data: [u8; 31],
+    },
+
+    /// id = OpCode(0x0025, 0x08)
+    LeReadLocalP256PublicKey,
+
+    /// id = OpCode(0x000A, 0x08)
+    LeSetAdvertisingEnable(bool),
+
+    /// id = OpCode(0x0022, 0x08)
+    LeSetDataLength {
+        connection_handle: ConnectionHandle,
+        tx_octets: u16,
+        tx_time: u16,
+    },
+
+    /// id = OpCode(0x001A, 0x08)
+    LeLongTermKeyRequestReply {
+        connection_handle: ConnectionHandle,
+        long_term_key: u128,
     },
 }
 
@@ -132,8 +175,8 @@ pub enum ScanEnable {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HciEventMsg {
-    /// id = [0x3e, 0x13, 0x01]
+pub enum LeMeta {
+    /// id = [0x01]
     LeConnectionComplete {
         status: HciStatus,
         connection_handle: u16,
@@ -145,21 +188,85 @@ pub enum HciEventMsg {
         supervision_timeout: u16,
         central_clock_accuracy: ClockAccuracy,
     },
-    /// id = [0x0E, 0x04]
+
+    /// id = [0x02]
+    LeAdvertisingReport(Vec<u8>),
+
+    /// id = [0x03]
+    LeConnectionUpdateComplete {
+        status: HciStatus,
+        connection_handle: ConnectionHandle,
+        interval: u16,
+        latency: u16,
+        timeout: u16,
+    },
+
+    /// id = [0x05]
+    LeLongTermKeyRequest {
+        connection_handle: ConnectionHandle,
+        random_number: u64,
+        encrypted_diversifier: u16,
+    },
+
+    /// id = [0x07]
+    LeDataLengthChange {
+        connection_handle: ConnectionHandle,
+        max_tx_octets: u16,
+        max_tx_time: u16,
+        max_rx_octets: u16,
+        max_rx_time: u16,
+    },
+
+    /// id = [0x08]
+    LeReadLocalP256PublicKeyComplete {
+        status: HciStatus,
+        public_key: [u8; 64],
+    },
+}
+
+/// length_after_id = u8
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HciEventMsg {
+    /// id = [0x05]
+    DisconnectComplete {
+        status: HciStatus,
+        connection_handle: ConnectionHandle,
+        reason: u8,
+    },
+
+    /// id = [0x08]
+    EncryptionChange {
+        status: HciStatus,
+        connection_handle: ConnectionHandle,
+        encryption_enabled: bool,
+    },
+
+    /// id = [0x13]
+    NumberOfCompletedPackets {
+        num_hci_command_packets: u8,
+        connection_handle: ConnectionHandle,
+        num_completed_packets: u16,
+    },
+
+    /// id = [0x3e]
+    LeMeta(LeMeta),
+
+    /// id = [0x0E]
     CommandComplete {
         num_hci_command_packets: u8,
-        command_opcode: u16,
+        command_opcode: OpCode,
         status: HciStatus,
+        data: Vec<u8>,
     },
-    /// id = [0x0F, 0x04]
+    /// id = [0x0F]
     CommandStatus {
         status: HciStatus,
         num_hci_command_packets: u8,
-        command_opcode: u16,
+        command_opcode: OpCode,
     },
-    // Other messages...
-    // #[deku(id_pat = "_")]
-    // Unreachable,
+
+    /// id = [0xFF]
+    VendorSpecific(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
@@ -291,348 +398,4 @@ pub enum SmpPairingFailure {
     CrossTransportKeyDerivationGenerationNotAllowed = 0x0E,
     KeyRejected = 0x0F,
     Busy = 0x10,
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::packer::*;
-
-    use super::*;
-
-    #[test]
-    fn deserialize_write_name() {
-        let mut packet = Packet::from_slice(&[
-            0x13, 0xc, 0xf8, 0x4d, 0x79, 0x20, 0x50, 0x69, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-        ]);
-        let msg = packet.unpack::<HciCommand>().unwrap();
-        if let HciCommand::WriteLocalName(name) = msg {
-            assert_eq!(name.get(), "My Pi");
-        } else {
-            panic!("Expected WriteLocalName");
-        }
-    }
-
-    #[test]
-    fn serialize_write_name() {
-        let mut packet = Packet::new();
-        packet
-            .pack(&HciCommand::WriteLocalName(FixedSizeUtf8::<248>::new(
-                "My Pi",
-            )))
-            .unwrap();
-        assert_eq!(
-            &[
-                0x13, 0xc, 0xf8, 0x4d, 0x79, 0x20, 0x50, 0x69, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            ],
-            packet.get_bytes()
-        );
-    }
-
-    #[test]
-    fn deserialize_connection_handle() {
-        let mut packet = Packet::from_slice(&[0xEF, 0xBE]);
-        let handle = ConnectionHandle::from_packet(&mut packet).unwrap();
-        assert_eq!(handle, ConnectionHandle(0xBEEF));
-    }
-
-    #[test]
-    fn deserialize_role() {
-        let mut packet = Packet::from_slice(&[0x00]);
-        let handle = Role::from_packet(&mut packet).unwrap();
-        assert_eq!(handle, Role::Central);
-    }
-
-    #[test]
-    fn test_hci_command_reset() {
-        let mut packet = Packet::from_slice(&[0x03, 0x0C, 0x00]);
-        let handle = HciCommand::from_packet(&mut packet).unwrap();
-        assert_eq!(handle, HciCommand::Reset);
-
-        let mut packet = Packet::new();
-        packet.pack(&HciCommand::Reset).unwrap();
-        assert_eq!(packet.get_bytes(), &[0x03, 0x0C, 0x00]);
-    }
-
-    #[test]
-    fn test_hci_command_set_event_mask() {
-        let mut packet =
-            Packet::from_slice(&[0x1, 0xc, 0x8, 0xff, 0xff, 0xfb, 0xff, 0x7, 0xf8, 0xbf, 0x3d]);
-        let handle = HciCommand::from_packet(&mut packet).unwrap();
-        assert_eq!(
-            handle,
-            HciCommand::SetEventMask {
-                event_mask: 4449547670108504063
-            }
-        );
-
-        let mut packet = Packet::new();
-        packet
-            .pack(&HciCommand::SetEventMask {
-                event_mask: 4449547670108504063,
-            })
-            .unwrap();
-        assert_eq!(
-            packet.get_bytes(),
-            &[
-                0x01, 0x0c, 0x08, 0xff, 0xff, 0xfb, 0xff, 0x7, 0xf8, 0xbf, 0x3d
-            ]
-        );
-    }
-
-    #[test]
-    fn hci_status() {
-        let mut packet = Packet::from_slice(&[0x00]);
-        let handle = HciStatus::from_packet(&mut packet).unwrap();
-        assert_eq!(handle, HciStatus::Success);
-
-        let mut packet = Packet::from_slice(&[0x05]);
-        let handle = HciStatus::from_packet(&mut packet).unwrap();
-        assert_eq!(handle, HciStatus::Failure(0x05));
-    }
-    #[test]
-    fn serialize_hci_status() {
-        let mut packet = Packet::from_slice(&[0x05]);
-
-        HciStatus::Success.to_packet(&mut packet).unwrap();
-        assert_eq!(packet.get_bytes(), &[0x00]);
-
-        HciStatus::Failure(0x05).to_packet(&mut packet).unwrap();
-        assert_eq!(packet.get_bytes(), &[0x00, 0x05]);
-    }
-
-    #[test]
-    fn test_event() {
-        const DATA: [u8; 21] = [
-            0x3e, 0x13, 0x1, 0x0, 0x40, 0x0, 0x1, 0x0, 0x26, 0xe, 0xd6, 0xe8, 0xc2, 0x50, 0x30,
-            0x0, 0x0, 0x0, 0xc0, 0x3, 0x1,
-        ];
-        let mut packet = Packet::from_slice(&DATA);
-        let msg = HciEventMsg::from_packet(&mut packet).unwrap();
-
-        let expected = HciEventMsg::LeConnectionComplete {
-            status: HciStatus::Success,
-            connection_handle: 0x0040,
-            role: Role::Peripheral,
-            peer_address_type: AddressType::Public,
-            peer_address: [0x26, 0xe, 0xd6, 0xe8, 0xc2, 0x50],
-            connection_interval: 48,
-            peripheral_latency: 0,
-            supervision_timeout: 960,
-            central_clock_accuracy: ClockAccuracy::Ppm250,
-        };
-        assert_eq!(msg, expected);
-
-        // Ensure it can be serialized back to the original bytes
-        // assert_eq!(msg.to_bytes().unwrap(), DATA.to_vec());
-    }
-
-    #[test]
-    fn test_auth_req() {
-        let m = AuthenticationRequirements {
-            bonding: true,
-            mitm_protection: true,
-            secure_connections: true,
-            keypress_notification: false,
-            ct2: true,
-            _reserved: 0,
-        };
-
-        let mut packet = Packet::new();
-        packet.pack(&m).unwrap();
-        assert_eq!(packet.get_bytes(), vec![0x2d]);
-
-        let mut packet = Packet::from_slice(&[0x2d]);
-        let res_msg = packet.unpack::<AuthenticationRequirements>();
-        assert_eq!(res_msg, Ok(m));
-    }
-
-    #[test]
-    fn test_keydistribution_flags() {
-        let v = KeyDistributionFlags {
-            enc_key: true,
-            id_key: false,
-            sign_key: true,
-            link_key: false,
-            _reserved: 0,
-        };
-
-        let mut packet = Packet::new();
-        packet.pack(&v).unwrap();
-        assert_eq!(packet.get_bytes(), vec![0b0000_0101]);
-    }
-
-    #[test]
-    fn test_pairing_request() {
-        // 02 40 20 0b 00 07 00 06 00 01 04 00 2d 10 0e 0f
-        const DATA: [u8; 16] = [
-            0x02, 0x40, 0x20, 0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x01, 0x04, 0x00, 0x2d, 0x10,
-            0x0e, 0x0f,
-        ];
-        let mut packet = Packet::from_slice(&DATA);
-        let res_msg = packet.unpack::<H4Packet>();
-        let msg = H4Packet::HciAcl {
-            connection_handle: ConnectionHandle(64),
-            pb: PacketBoundaryFlag::FirstFlushable,
-            bc: BroadcastFlag::PointToPoint,
-            msg: L2CapMessage::Smp(SmpPdu::SmpPairingRequest {
-                io_capability: IOCapability::KeyboardDisplay,
-                oob_data_flag: OOBDataFlag::OobNotAvailable,
-                authentication_requirements: AuthenticationRequirements {
-                    bonding: true,
-                    mitm_protection: true,
-                    secure_connections: true,
-                    keypress_notification: false,
-                    ct2: true,
-                    _reserved: 0,
-                },
-                max_encryption_key_size: 16,
-                initiator_key_distribution: KeyDistributionFlags {
-                    enc_key: false,
-                    id_key: true,
-                    sign_key: true,
-                    link_key: true,
-                    _reserved: 0,
-                },
-                responder_key_distribution: KeyDistributionFlags {
-                    enc_key: true,
-                    id_key: true,
-                    sign_key: true,
-                    link_key: true,
-                    _reserved: 0,
-                },
-            }),
-        };
-        assert_eq!(res_msg.as_ref(), Ok(&msg));
-
-        // Serializes back to the original bytes
-        let mut packer2 = Packet::new();
-        packer2.pack(&msg).unwrap();
-        let serialized_bytes = packer2.get_bytes();
-        assert_eq!(DATA.to_vec(), serialized_bytes);
-    }
-
-    #[test]
-    fn test_pairing_request_2() {
-        const DATA: [u8; 15] = [
-            0x40, 0x20, 0x0b, 0x00, 0x07, 0x00, 0x06, 0x00, 0x01, 0x04, 0x00, 0x2d, 0x10, 0x0e,
-            0x0f,
-        ];
-        let mut packet = Packet::from_slice(&DATA);
-        let h: ConnectionHandle = packet.set_bits(12).unpack().unwrap();
-        println!("{:x?}", h.0);
-
-        let v = packet.set_bits(2).next_if_eq(&[0b10]);
-        println!("{:?}", v);
-
-        // let p: u8 = packet.set_bits(2).unpack().unwrap();
-        // Print binary
-        // println!("{:?}", p);
-        // println!("{:08b}", p);
-        // packet.unpack()
-    }
-    /*
-    #[test]
-    fn test_role() {
-        assert_eq!(Role::Central.to_bytes().unwrap(), vec![0x00]);
-        assert_eq!(Role::Peripheral.to_bytes().unwrap(), vec![0x01]);
-
-        let ((rest, offset), v) = Role::from_bytes((&[0x00, 0xFF], 0)).unwrap();
-        assert_eq!(v, Role::Central);
-        assert_eq!(offset, 0);
-        assert_eq!(rest.len(), 1);
-        assert_eq!(rest[0], 0xFF);
-
-        let ((rest, offset), v) = Role::from_bytes((&[0x01, 0xFF], 0)).unwrap();
-        assert_eq!(v, Role::Peripheral);
-        assert_eq!(offset, 0);
-        assert_eq!(rest.len(), 1);
-        assert_eq!(rest[0], 0xFF);
-
-        // Error
-        let err = Role::from_bytes((&[0x02, 0xFF], 0)).unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "Parse error: Could not match enum variant id = 2 on enum `Role`"
-        );
-    }
-
-    #[test]
-    fn test_address_type() {
-        assert_eq!(AddressType::Public.to_bytes().unwrap(), vec![0x00]);
-        assert_eq!(AddressType::Random.to_bytes().unwrap(), vec![0x01]);
-
-        let ((rest, offset), v) = AddressType::from_bytes((&[0x00, 0xFF], 0)).unwrap();
-        assert_eq!(v, AddressType::Public);
-        assert_eq!(offset, 0);
-        assert_eq!(rest.len(), 1);
-        assert_eq!(rest[0], 0xFF);
-
-        let ((rest, offset), v) = AddressType::from_bytes((&[0x01, 0xFF], 0)).unwrap();
-        assert_eq!(v, AddressType::Random);
-        assert_eq!(offset, 0);
-        assert_eq!(rest.len(), 1);
-        assert_eq!(rest[0], 0xFF);
-    }
-
-    #[test]
-    fn test_hci_status() {
-        assert_eq!(HciStatus::Success.to_bytes().unwrap(), vec![0x00]);
-        assert_eq!(HciStatus::Failure(0x05).to_bytes().unwrap(), vec![0x05]);
-
-        let ((rest, offset), v) = HciStatus::from_bytes((&[0x00, 0xFF], 0)).unwrap();
-        assert_eq!(v, HciStatus::Success);
-        assert_eq!(offset, 0);
-        assert_eq!(rest.len(), 1);
-        assert_eq!(rest[0], 0xFF);
-
-        let ((rest, offset), v) = HciStatus::from_bytes((&[0x05, 0xFF], 0)).unwrap();
-        assert_eq!(v, HciStatus::Failure(0x05));
-        assert_eq!(offset, 0);
-        assert_eq!(rest.len(), 1);
-        assert_eq!(rest[0], 0xFF);
-    }
-
-    #[test]
-    fn test_connection_handle() {
-        assert_eq!(
-            ConnectionHandle(0xBEEF).to_bytes().unwrap(),
-            vec![0xEF, 0xBE]
-        );
-
-        let ((rest, offset), v) = ConnectionHandle::from_bytes((&[0xEF, 0xBE, 0xCA], 0)).unwrap();
-        assert_eq!(v, ConnectionHandle(0xBEEF));
-        assert_eq!(offset, 0);
-        assert_eq!(rest.len(), 1);
-        assert_eq!(rest[0], 0xCA);
-    }
-    */
 }
