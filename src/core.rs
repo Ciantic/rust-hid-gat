@@ -44,20 +44,13 @@ pub enum L2CapMessage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttPdu {
     /// id = [0x02]
-    AttExchangeMtuRequest {
-        /// length_after_id = u8
-        mtu: u16,
-    },
+    AttExchangeMtuRequest { mtu: u16 },
 
     /// id = [0x03]
-    AttExchangeMtuResponse {
-        /// length_after_id = u8
-        mtu: u16,
-    },
+    AttExchangeMtuResponse { mtu: u16 },
 
     /// id = [0x06]
     AttFindByTypeValueRequest {
-        /// length_after_id = u8
         starting_handle: u16,
         ending_handle: u16,
         uuid: u16,
@@ -70,10 +63,7 @@ pub enum AttPdu {
     },
 
     /// id = [0x18]
-    AttExecuteWriteRequest {
-        /// length_after_id = u8
-        flags: u8,
-    },
+    AttExecuteWriteRequest { flags: u8 },
 
     /// id = [0x19]
     AttExecuteWriteResponse,

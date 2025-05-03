@@ -112,11 +112,7 @@ impl FromToPacket for AttPdu {
                 value: bytes.unpack()?,
             });
         }
-        Err(
-            PacketError::Unspecified(
-                format!("No matching variant found for {}", stringify!(AttPdu)),
-            ),
-        )
+        Ok(AttPdu::AttUnknown(bytes.unpack()?, bytes.unpack()?))
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
@@ -155,6 +151,10 @@ impl FromToPacket for AttPdu {
                 bytes.pack(&[0x1B])?;
                 bytes.pack(handle)?;
                 bytes.pack(value)?;
+            }
+            AttPdu::AttUnknown(m0, m1) => {
+                bytes.pack(m0)?;
+                bytes.pack(m1)?;
             }
         };
         Ok(())
