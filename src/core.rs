@@ -33,9 +33,56 @@ pub enum L2CapMessage {
     /// id = [0x06, 0x00]
     Smp(SmpPdu),
     /// id = [0x04, 0x00]
-    Att,
+    Att(AttPdu),
     /// id = _
     Unknown(u16, Vec<u8>),
+}
+
+/// ATT Message
+///
+/// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-60/out/en/host/attribute-protocol--att-.html
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AttPdu {
+    /// id = [0x02]
+    AttExchangeMtuRequest {
+        /// length_after_id = u8
+        mtu: u16,
+    },
+
+    /// id = [0x03]
+    AttExchangeMtuResponse {
+        /// length_after_id = u8
+        mtu: u16,
+    },
+
+    /// id = [0x06]
+    AttFindByTypeValueRequest {
+        /// length_after_id = u8
+        starting_handle: u16,
+        ending_handle: u16,
+        uuid: u16,
+        value: Vec<u8>,
+    },
+
+    /// id = [0x07]
+    AttFindByTypeValueResponse {
+        handles_information: Vec<(u16, u16)>,
+    },
+
+    /// id = [0x18]
+    AttExecuteWriteRequest {
+        /// length_after_id = u8
+        flags: u8,
+    },
+
+    /// id = [0x19]
+    AttExecuteWriteResponse,
+
+    /// id = [0x1B]
+    AttHandleValueNotification { handle: u16, value: Vec<u8> },
+
+    /// id = _
+    AttUnknown(u8, Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

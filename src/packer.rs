@@ -224,14 +224,52 @@ impl<const T: usize> FromToPacket for [u8; T] {
     }
 }
 
-impl FromToPacket for Vec<u8> {
+// impl FromToPacket for Vec<u8> {
+//     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+//         Ok(bytes.data[bytes.position..].to_vec())
+//     }
+//     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+//         bytes.pack_bytes(self.as_slice())?;
+//         Ok(())
+//     }
+// }
+
+impl<T> FromToPacket for Vec<T>
+where
+    T: FromToPacket,
+{
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-        Ok(bytes.data[bytes.position..].to_vec())
+        let mut vec = Vec::new();
+        while bytes.position < bytes.data.len() {
+            let item = T::from_packet(bytes)?;
+            vec.push(item);
+        }
+        Ok(vec)
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
-        bytes.pack_bytes(self.as_slice())?;
+        for item in self {
+            item.to_packet(bytes)?;
+        }
         Ok(())
     }
+}
+
+macro_rules! tuple_impls {
+    ( $( $name:ident )+ ) => {
+        impl<$($name: FromToPacket),+> FromToPacket for ($($name,)+)
+        {
+            fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+                let ($($name,)+) = ($( $name::from_packet(bytes)? ),+);
+                Ok(($($name,)+))
+            }
+
+            fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+                let ($($name,)+) = self;
+                $( $name.to_packet(bytes)?; )+
+                Ok(())
+            }
+        }
+    };
 }
 
 macro_rules! impl_from_to_bytes {
@@ -269,6 +307,18 @@ impl_from_to_bytes!(i64, 8);
 impl_from_to_bytes!(i128, 16);
 impl_from_to_bytes!(f32, 4);
 impl_from_to_bytes!(f64, 8);
+
+tuple_impls! { A B }
+tuple_impls! { A B C }
+tuple_impls! { A B C D }
+tuple_impls! { A B C D E }
+tuple_impls! { A B C D E F }
+tuple_impls! { A B C D E F G }
+tuple_impls! { A B C D E F G H }
+tuple_impls! { A B C D E F G H I }
+tuple_impls! { A B C D E F G H I J }
+tuple_impls! { A B C D E F G H I J K }
+tuple_impls! { A B C D E F G H I J K L }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PacketError {

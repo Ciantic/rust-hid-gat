@@ -50,7 +50,7 @@ impl FromToPacket for L2CapMessage {
             return Ok(L2CapMessage::Smp(bytes.unpack()?));
         }
         if bytes.next_if_eq(&[0x04, 0x00]) {
-            return Ok(L2CapMessage::Att);
+            return Ok(L2CapMessage::Att(bytes.unpack()?));
         }
         Ok(L2CapMessage::Unknown(bytes.unpack()?, bytes.unpack()?))
     }
@@ -61,12 +61,100 @@ impl FromToPacket for L2CapMessage {
                 bytes.pack(&[0x06, 0x00])?;
                 bytes.pack(m0)?;
             }
-            L2CapMessage::Att => {
+            L2CapMessage::Att(m0) => {
                 bytes.pack(&[0x04, 0x00])?;
+                bytes.pack(m0)?;
             }
             L2CapMessage::Unknown(m0, m1) => {
                 bytes.pack(m0)?;
                 bytes.pack(m1)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for AttPdu {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        if bytes.next_if_eq(&[0x02]) {
+            return Ok(AttPdu::AttExchangeMtuRequest {
+                mtu: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x03]) {
+            return Ok(AttPdu::AttExchangeMtuResponse {
+                mtu: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x06]) {
+            return Ok(AttPdu::AttFindByTypeValueRequest {
+                starting_handle: bytes.unpack()?,
+                ending_handle: bytes.unpack()?,
+                uuid: bytes.unpack()?,
+                value: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x07]) {
+            return Ok(AttPdu::AttFindByTypeValueResponse {
+                handles_information: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x18]) {
+            return Ok(AttPdu::AttExecuteWriteRequest {
+                flags: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x19]) {
+            return Ok(AttPdu::AttExecuteWriteResponse);
+        }
+        if bytes.next_if_eq(&[0x1B]) {
+            return Ok(AttPdu::AttHandleValueNotification {
+                handle: bytes.unpack()?,
+                value: bytes.unpack()?,
+            });
+        }
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(AttPdu)),
+            ),
+        )
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttPdu::AttExchangeMtuRequest { mtu } => {
+                bytes.pack(&[0x02])?;
+                bytes.pack(mtu)?;
+            }
+            AttPdu::AttExchangeMtuResponse { mtu } => {
+                bytes.pack(&[0x03])?;
+                bytes.pack(mtu)?;
+            }
+            AttPdu::AttFindByTypeValueRequest {
+                starting_handle,
+                ending_handle,
+                uuid,
+                value,
+            } => {
+                bytes.pack(&[0x06])?;
+                bytes.pack(starting_handle)?;
+                bytes.pack(ending_handle)?;
+                bytes.pack(uuid)?;
+                bytes.pack(value)?;
+            }
+            AttPdu::AttFindByTypeValueResponse { handles_information } => {
+                bytes.pack(&[0x07])?;
+                bytes.pack(handles_information)?;
+            }
+            AttPdu::AttExecuteWriteRequest { flags } => {
+                bytes.pack(&[0x18])?;
+                bytes.pack(flags)?;
+            }
+            AttPdu::AttExecuteWriteResponse => {
+                bytes.pack(&[0x19])?;
+            }
+            AttPdu::AttHandleValueNotification { handle, value } => {
+                bytes.pack(&[0x1B])?;
+                bytes.pack(handle)?;
+                bytes.pack(value)?;
             }
         };
         Ok(())
