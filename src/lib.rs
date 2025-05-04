@@ -1,17 +1,12 @@
 use gatt::*;
 
 mod c1;
-mod command;
 // mod controller;
-mod event;
 mod gatt;
-mod packets;
 // mod parrot
 pub mod core;
 pub mod core_gen;
 pub mod packer;
-mod primitives;
-mod smp;
 
 fn build_hid_db() -> AttributeDatabase {
     let mut db = AttributeDatabase::new();
