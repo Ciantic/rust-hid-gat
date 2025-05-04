@@ -4,8 +4,8 @@ mod c1;
 // mod controller;
 mod gatt;
 // mod parrot
-pub mod core;
-pub mod core_gen;
+pub mod messages;
+pub mod messages_impl;
 pub mod packer;
 
 fn build_hid_db() -> AttributeDatabase {
