@@ -590,6 +590,13 @@ impl FromToPacket for LeMeta {
                 timeout: bytes.unpack()?,
             });
         }
+        if bytes.next_if_eq(&[0x04]) {
+            return Ok(LeMeta::LeReadRemoteFeaturesPage0Complete {
+                status: bytes.unpack()?,
+                connection_handle: bytes.unpack()?,
+                le_features: bytes.unpack()?,
+            });
+        }
         if bytes.next_if_eq(&[0x05]) {
             return Ok(LeMeta::LeLongTermKeyRequest {
                 connection_handle: bytes.unpack()?,
@@ -659,6 +666,16 @@ impl FromToPacket for LeMeta {
                 bytes.pack(interval)?;
                 bytes.pack(latency)?;
                 bytes.pack(timeout)?;
+            }
+            LeMeta::LeReadRemoteFeaturesPage0Complete {
+                status,
+                connection_handle,
+                le_features,
+            } => {
+                bytes.pack(&[0x04])?;
+                bytes.pack(status)?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(le_features)?;
             }
             LeMeta::LeLongTermKeyRequest {
                 connection_handle,

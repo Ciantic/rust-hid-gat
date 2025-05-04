@@ -88,12 +88,16 @@ fn test_parsing() {
 
     for (d, bytes) in data {
         let mut packer = Packet::from_slice(&bytes);
-        let packet = packer.unpack::<H4Packet>();
+        let packet = packer.unpack::<H4Packet>().unwrap();
         if d {
-            println!("> {:?}", packet.unwrap());
+            println!("> {:?}", &packet);
         } else {
-            println!("< {:?}", packet.unwrap());
+            println!("< {:?}", &packet);
         }
+        // Test that serialization works
+        let mut test_packer = Packet::new();
+        test_packer.pack::<H4Packet>(&packet).unwrap();
+        assert_eq!(test_packer.get_bytes(), &bytes);
     }
 }
 
@@ -103,12 +107,17 @@ fn test_parsing2() {
 
     for (d, bytes) in data {
         let mut packer = Packet::from_slice(&bytes);
-        let packet = packer.unpack::<H4Packet>();
+        let packet = packer.unpack::<H4Packet>().unwrap();
         if d {
-            println!("> {:?}", packet.unwrap());
+            println!("> {:?}", &packet);
         } else {
-            println!("< {:?}", packet.unwrap());
+            println!("< {:?}", &packet);
         }
+
+        // Test that serialization works
+        let mut test_packer = Packet::new();
+        test_packer.pack::<H4Packet>(&packet).unwrap();
+        assert_eq!(test_packer.get_bytes(), &bytes);
     }
 }
 
@@ -118,11 +127,16 @@ fn test_parsing3() {
 
     for (d, bytes) in data {
         let mut packer = Packet::from_slice(&bytes);
-        let packet = packer.unpack::<H4Packet>();
+        let packet = packer.unpack::<H4Packet>().unwrap();
         if d {
-            println!("> {:?}", packet.unwrap());
+            println!("> {:?}", &packet);
         } else {
-            println!("< {:?}", packet.unwrap());
+            println!("< {:?}", &packet);
         }
+
+        // Test that serialization works
+        let mut test_packer = Packet::new();
+        test_packer.pack::<H4Packet>(&packet).unwrap();
+        assert_eq!(test_packer.get_bytes(), &bytes);
     }
 }

@@ -253,6 +253,13 @@ pub enum LeMeta {
         timeout: u16,
     },
 
+    /// id = [0x04]
+    LeReadRemoteFeaturesPage0Complete {
+        status: HciStatus,
+        connection_handle: ConnectionHandle,
+        le_features: u64,
+    },
+
     /// id = [0x05]
     LeLongTermKeyRequest {
         connection_handle: ConnectionHandle,
