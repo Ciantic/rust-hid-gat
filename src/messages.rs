@@ -88,9 +88,9 @@ pub enum AttPdu {
         /// The Length parameter shall be set to the size of one attribute handle-value pair.
         pair_length: u8,
 
-        /// (Handle, value pairs)
         // Following can't work, because Vec reads to the end of the buffer, falling back to Vec<u8> instead
         // values: Vec<(u16, Vec<u8>)>,
+        /// (Handle, value pairs)
         values: Vec<u8>,
     },
 
