@@ -15,7 +15,7 @@ fn generate_files(path: String, output: String) {
     let impls = implementer(&res.items);
 
     let v = quote! {
-        use crate::core::*;
+        use crate::messages::*;
         use crate::packer::*;
         #(#impls)*
     };

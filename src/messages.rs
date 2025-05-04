@@ -49,6 +49,18 @@ pub enum AttPdu {
     /// id = [0x03]
     AttExchangeMtuResponse { mtu: u16 },
 
+    /// id = [0x04]
+    AttFindInformationRequest {
+        starting_handle: u16,
+        ending_handle: u16,
+    },
+
+    /// id = [0x05]
+    AttFindInformationResponse {
+        format: u8,
+        information: Vec<(u16, u16)>,
+    },
+
     /// id = [0x06]
     AttFindByTypeValueRequest {
         starting_handle: u16,
@@ -61,6 +73,29 @@ pub enum AttPdu {
     AttFindByTypeValueResponse {
         handles_information: Vec<(u16, u16)>,
     },
+
+    /// id = [0x08]
+    AttReadByTypeRequest {
+        starting_handle: u16,
+        ending_handle: u16,
+
+        /// 2 or 16 bytes
+        uuid: Vec<u8>,
+    },
+
+    /// id = [0x09]
+    AttReadByTypeResponse {
+        /// The Length parameter shall be set to the size of one attribute handle-value pair.
+        pair_length: u8,
+        /// (Handle, value pairs)
+        values: Vec<(u16, Vec<u8>)>,
+    },
+
+    /// id = [0x0A]
+    AttReadRequest { handle: u16 },
+
+    /// id = [0x0B]
+    AttReadResponse { value: Vec<u8> },
 
     /// id = [0x18]
     AttExecuteWriteRequest { flags: u8 },
