@@ -111,3 +111,18 @@ fn test_parsing2() {
         }
     }
 }
+
+#[test]
+fn test_parsing3() {
+    let data = parse_hci_dump_from_file("tests/hcidump-03.txt");
+
+    for (d, bytes) in data {
+        let mut packer = Packet::from_slice(&bytes);
+        let packet = packer.unpack::<H4Packet>();
+        if d {
+            println!("> {:?}", packet.unwrap());
+        } else {
+            println!("< {:?}", packet.unwrap());
+        }
+    }
+}

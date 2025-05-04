@@ -162,16 +162,6 @@ impl FromToPacket for AttPdu {
 }
 impl FromToPacket for SmpPdu {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-        if bytes.next_if_eq(&[0x03]) {
-            return Ok(SmpPdu::SmpPairingConfirmation {
-                confirm_value: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq(&[0x04]) {
-            return Ok(SmpPdu::SmpPairingRandom {
-                random_value: bytes.unpack()?,
-            });
-        }
         if bytes.next_if_eq(&[0x01]) {
             return Ok(SmpPdu::SmpPairingRequest {
                 io_capability: bytes.unpack()?,
@@ -192,6 +182,30 @@ impl FromToPacket for SmpPdu {
                 responder_key_distribution: bytes.unpack()?,
             });
         }
+        if bytes.next_if_eq(&[0x03]) {
+            return Ok(SmpPdu::SmpPairingConfirmation {
+                confirm_value: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x04]) {
+            return Ok(SmpPdu::SmpPairingRandom {
+                random_value: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x05]) {
+            return Ok(SmpPdu::SmpPairingFailed(bytes.unpack()?));
+        }
+        if bytes.next_if_eq(&[0x06]) {
+            return Ok(SmpPdu::SmpEncryptionInformation {
+                long_term_key: bytes.unpack()?,
+            });
+        }
+        if bytes.next_if_eq(&[0x07]) {
+            return Ok(SmpPdu::SmpCentralIdentification {
+                encrypted_diversifier: bytes.unpack()?,
+                random_number: bytes.unpack()?,
+            });
+        }
         Err(
             PacketError::Unspecified(
                 format!("No matching variant found for {}", stringify!(SmpPdu)),
@@ -200,14 +214,6 @@ impl FromToPacket for SmpPdu {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            SmpPdu::SmpPairingConfirmation { confirm_value } => {
-                bytes.pack(&[0x03])?;
-                bytes.pack(confirm_value)?;
-            }
-            SmpPdu::SmpPairingRandom { random_value } => {
-                bytes.pack(&[0x04])?;
-                bytes.pack(random_value)?;
-            }
             SmpPdu::SmpPairingRequest {
                 io_capability,
                 oob_data_flag,
@@ -239,6 +245,30 @@ impl FromToPacket for SmpPdu {
                 bytes.pack(max_encryption_key_size)?;
                 bytes.pack(initiator_key_distribution)?;
                 bytes.pack(responder_key_distribution)?;
+            }
+            SmpPdu::SmpPairingConfirmation { confirm_value } => {
+                bytes.pack(&[0x03])?;
+                bytes.pack(confirm_value)?;
+            }
+            SmpPdu::SmpPairingRandom { random_value } => {
+                bytes.pack(&[0x04])?;
+                bytes.pack(random_value)?;
+            }
+            SmpPdu::SmpPairingFailed(m0) => {
+                bytes.pack(&[0x05])?;
+                bytes.pack(m0)?;
+            }
+            SmpPdu::SmpEncryptionInformation { long_term_key } => {
+                bytes.pack(&[0x06])?;
+                bytes.pack(long_term_key)?;
+            }
+            SmpPdu::SmpCentralIdentification {
+                encrypted_diversifier,
+                random_number,
+            } => {
+                bytes.pack(&[0x07])?;
+                bytes.pack(encrypted_diversifier)?;
+                bytes.pack(random_number)?;
             }
         };
         Ok(())

@@ -77,10 +77,6 @@ pub enum AttPdu {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SmpPdu {
-    /// id = [0x03]
-    SmpPairingConfirmation { confirm_value: u128 },
-    /// id = [0x04]
-    SmpPairingRandom { random_value: u128 },
     /// id = [0x01]
     SmpPairingRequest {
         io_capability: IOCapability,
@@ -90,6 +86,7 @@ pub enum SmpPdu {
         initiator_key_distribution: KeyDistributionFlags,
         responder_key_distribution: KeyDistributionFlags,
     },
+
     /// id = [0x02]
     SmpPairingResponse {
         io_capability: IOCapability,
@@ -98,6 +95,24 @@ pub enum SmpPdu {
         max_encryption_key_size: u8,
         initiator_key_distribution: KeyDistributionFlags,
         responder_key_distribution: KeyDistributionFlags,
+    },
+
+    /// id = [0x03]
+    SmpPairingConfirmation { confirm_value: u128 },
+
+    /// id = [0x04]
+    SmpPairingRandom { random_value: u128 },
+
+    /// id = [0x05]
+    SmpPairingFailed(SmpPairingFailure),
+
+    /// id = [0x06]
+    SmpEncryptionInformation { long_term_key: u128 },
+
+    /// id = [0x07]
+    SmpCentralIdentification {
+        encrypted_diversifier: u16,
+        random_number: u64,
     },
 }
 
