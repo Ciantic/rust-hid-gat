@@ -28,5 +28,8 @@ fn generate_files(path: String, output: String) {
 }
 
 fn main() {
-    generate_files("./src/core.rs".to_string(), "./src/core_gen.rs".to_string());
+    generate_files(
+        "./src/messages.rs".to_string(),
+        "./src/messages_impl.rs".to_string(),
+    );
 }

@@ -1,4 +1,4 @@
-use bt_only_headers::core::*;
+use bt_only_headers::messages::*;
 use bt_only_headers::packer::*;
 
 #[test]

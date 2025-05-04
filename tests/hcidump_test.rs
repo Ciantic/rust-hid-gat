@@ -1,4 +1,4 @@
-use bt_only_headers::core::*;
+use bt_only_headers::messages::*;
 use bt_only_headers::packer::*;
 
 fn parse_hci_dump(dump: String) -> Vec<(bool, Vec<u8>)> {
