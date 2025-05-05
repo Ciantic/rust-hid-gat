@@ -160,6 +160,10 @@ mod tests2 {
     }
 }
 
+pub trait PacketIdentifier<T: FromToPacket> {
+    fn get_id(&self) -> T;
+}
+
 pub trait FromToPacket {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError>
     where

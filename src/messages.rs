@@ -1,12 +1,13 @@
 use crate::packer::FixedSizeUtf8;
 
+/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum H4Packet {
-    /// id = [0x01]
+    /// id = 0x01
     HciCommand(HciCommand),
-    /// id = [0x04]
+    /// id = 0x04
     HciEvent(HciEventMsg),
-    /// id = [0x02]
+    /// id = 0x02
     HciAcl {
         /// bits = 12
         connection_handle: ConnectionHandle,
@@ -26,13 +27,14 @@ pub enum H4Packet {
 
 /// L2CAP Message
 ///
+/// id_type = u16
 /// prepend_length = u16
 /// prepend_length_offset = -2
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum L2CapMessage {
-    /// id = [0x06, 0x00]
+    /// id = 0x0006
     Smp(SmpPdu),
-    /// id = [0x04, 0x00]
+    /// id = 0x0004
     Att(AttPdu),
     /// id = _
     Unknown(u16, Vec<u8>),
@@ -41,27 +43,29 @@ pub enum L2CapMessage {
 /// ATT Message
 ///
 /// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-60/out/en/host/attribute-protocol--att-.html
+///
+/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttPdu {
-    /// id = [0x02]
+    /// id = 0x02
     AttExchangeMtuRequest { mtu: u16 },
 
-    /// id = [0x03]
+    /// id = 0x03
     AttExchangeMtuResponse { mtu: u16 },
 
-    /// id = [0x04]
+    /// id = 0x04
     AttFindInformationRequest {
         starting_handle: u16,
         ending_handle: u16,
     },
 
-    /// id = [0x05]
+    /// id = 0x05
     AttFindInformationResponse {
         format: u8,
         information: Vec<(u16, u16)>,
     },
 
-    /// id = [0x06]
+    /// id = 0x06
     AttFindByTypeValueRequest {
         starting_handle: u16,
         ending_handle: u16,
@@ -69,12 +73,12 @@ pub enum AttPdu {
         value: Vec<u8>,
     },
 
-    /// id = [0x07]
+    /// id = 0x07
     AttFindByTypeValueResponse {
         handles_information: Vec<(u16, u16)>,
     },
 
-    /// id = [0x08]
+    /// id = 0x08
     AttReadByTypeRequest {
         starting_handle: u16,
         ending_handle: u16,
@@ -83,7 +87,7 @@ pub enum AttPdu {
         uuid: Vec<u8>,
     },
 
-    /// id = [0x09]
+    /// id = 0x09
     AttReadByTypeResponse {
         /// The Length parameter shall be set to the size of one attribute handle-value pair.
         pair_length: u8,
@@ -94,28 +98,29 @@ pub enum AttPdu {
         values: Vec<u8>,
     },
 
-    /// id = [0x0A]
+    /// id = 0x0A
     AttReadRequest { handle: u16 },
 
-    /// id = [0x0B]
+    /// id = 0x0B
     AttReadResponse { value: Vec<u8> },
 
-    /// id = [0x18]
+    /// id = 0x18
     AttExecuteWriteRequest { flags: u8 },
 
-    /// id = [0x19]
+    /// id = 0x19
     AttExecuteWriteResponse,
 
-    /// id = [0x1B]
+    /// id = 0x1B
     AttHandleValueNotification { handle: u16, value: Vec<u8> },
 
     /// id = _
     AttUnknown(u8, Vec<u8>),
 }
 
+/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SmpPdu {
-    /// id = [0x01]
+    /// id = 0x01
     SmpPairingRequest {
         io_capability: IOCapability,
         oob_data_flag: OOBDataFlag,
@@ -125,7 +130,7 @@ pub enum SmpPdu {
         responder_key_distribution: KeyDistributionFlags,
     },
 
-    /// id = [0x02]
+    /// id = 0x02
     SmpPairingResponse {
         io_capability: IOCapability,
         oob_data_flag: OOBDataFlag,
@@ -135,19 +140,19 @@ pub enum SmpPdu {
         responder_key_distribution: KeyDistributionFlags,
     },
 
-    /// id = [0x03]
+    /// id = 0x03
     SmpPairingConfirmation { confirm_value: u128 },
 
-    /// id = [0x04]
+    /// id = 0x04
     SmpPairingRandom { random_value: u128 },
 
-    /// id = [0x05]
+    /// id = 0x05
     SmpPairingFailed(SmpPairingFailure),
 
-    /// id = [0x06]
+    /// id = 0x06
     SmpEncryptionInformation { long_term_key: u128 },
 
-    /// id = [0x07]
+    /// id = 0x07
     SmpCentralIdentification {
         encrypted_diversifier: u16,
         random_number: u64,
@@ -155,6 +160,7 @@ pub enum SmpPdu {
 }
 
 /// length_after_id = u8
+/// id_type = OpCode
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HciCommand {
     /// id = OpCode(0x0006, 0x01)
@@ -251,22 +257,24 @@ pub struct OpCode(
     pub u8,
 );
 
+/// id_type = u8
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScanEnable {
-    /// id = [0x00]
+    /// id = 0x00
     NoScans,
-    /// id = [0x01]
+    /// id = 0x01
     InquiryScanEnabled_PageScanDisabled,
-    /// id = [0x02]
+    /// id = 0x02
     InquiryScanDisabled_PageScanEnabled,
-    /// id = [0x03]
+    /// id = 0x03
     InquiryScanEnabled_PageScanEnabled,
 }
 
+/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LeMeta {
-    /// id = [0x01]
+    /// id = 0x01
     LeConnectionComplete {
         status: HciStatus,
         connection_handle: u16,
@@ -279,10 +287,10 @@ pub enum LeMeta {
         central_clock_accuracy: ClockAccuracy,
     },
 
-    /// id = [0x02]
+    /// id = 0x02
     LeAdvertisingReport(Vec<u8>),
 
-    /// id = [0x03]
+    /// id = 0x03
     LeConnectionUpdateComplete {
         status: HciStatus,
         connection_handle: ConnectionHandle,
@@ -291,21 +299,21 @@ pub enum LeMeta {
         timeout: u16,
     },
 
-    /// id = [0x04]
+    /// id = 0x04
     LeReadRemoteFeaturesPage0Complete {
         status: HciStatus,
         connection_handle: ConnectionHandle,
         le_features: u64,
     },
 
-    /// id = [0x05]
+    /// id = 0x05
     LeLongTermKeyRequest {
         connection_handle: ConnectionHandle,
         random_number: u64,
         encrypted_diversifier: u16,
     },
 
-    /// id = [0x07]
+    /// id = 0x07
     LeDataLengthChange {
         connection_handle: ConnectionHandle,
         max_tx_octets: u16,
@@ -314,58 +322,60 @@ pub enum LeMeta {
         max_rx_time: u16,
     },
 
-    /// id = [0x08]
+    /// id = 0x08
     LeReadLocalP256PublicKeyComplete {
         status: HciStatus,
         public_key: [u8; 64],
     },
 }
 
+/// id_type = u8
 /// length_after_id = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HciEventMsg {
-    /// id = [0x05]
+    /// id = 0x05
     DisconnectComplete {
         status: HciStatus,
         connection_handle: ConnectionHandle,
         reason: u8,
     },
 
-    /// id = [0x08]
+    /// id = 0x08
     EncryptionChange {
         status: HciStatus,
         connection_handle: ConnectionHandle,
         encryption_enabled: bool,
     },
 
-    /// id = [0x13]
+    /// id = 0x13
     NumberOfCompletedPackets {
         num_hci_command_packets: u8,
         connection_handle: ConnectionHandle,
         num_completed_packets: u16,
     },
 
-    /// id = [0x3e]
+    /// id = 0x3e
     LeMeta(LeMeta),
 
-    /// id = [0x0E]
+    /// id = 0x0E
     CommandComplete {
         num_hci_command_packets: u8,
         command_opcode: OpCode,
         status: HciStatus,
         data: Vec<u8>,
     },
-    /// id = [0x0F]
+    /// id = 0x0F
     CommandStatus {
         status: HciStatus,
         num_hci_command_packets: u8,
         command_opcode: OpCode,
     },
 
-    /// id = [0xFF]
+    /// id = 0xFF
     VendorSpecific(Vec<u8>),
 }
 
+/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
 pub enum PacketBoundaryFlag {
     #[default]
@@ -375,6 +385,7 @@ pub enum PacketBoundaryFlag {
     Deprecated = 0b11,
 }
 
+/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
 pub enum BroadcastFlag {
     #[default]
@@ -382,26 +393,30 @@ pub enum BroadcastFlag {
     BdEdrBroadcast = 0b01,
 }
 
+/// id_type = u8
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum HciStatus {
-    /// id = [0x00]
+    /// id = 0x00
     Success,
     /// id = _
     Failure(u8),
 }
 
+/// id_type = u8
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Role {
     Central = 0,
     Peripheral = 1,
 }
 
+/// id_type = u8
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AddressType {
     Public = 0,
     Random = 1,
 }
 
+/// id_type = u8
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ClockAccuracy {
     Ppm500 = 0,
@@ -457,6 +472,7 @@ pub struct AuthenticationRequirements {
     pub _reserved: u8,
 }
 
+/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IOCapability {
     DisplayOnly = 0x00,
@@ -467,6 +483,7 @@ pub enum IOCapability {
     // Reserved(u8),
 }
 
+/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OOBDataFlag {
     OobNotAvailable = 0x00,
@@ -477,6 +494,8 @@ pub enum OOBDataFlag {
 /// SMP Pairing failures
 ///
 /// https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core-60/out/en/host/security-manager-specification.html#UUID-edc160cf-62e1-c774-f84c-da67aaf4aa50
+///
+/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SmpPairingFailure {
     PasskeyEntryFailed = 0x01,

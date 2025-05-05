@@ -1,0 +1,7 @@
+[package]
+name = "hid-gatt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bt-only-headers = { path = "../" }

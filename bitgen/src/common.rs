@@ -5,6 +5,8 @@ use syn::FieldsNamed;
 use syn::FieldsUnnamed;
 use syn::Ident;
 use syn::LitInt;
+use syn::Path;
+use syn::Token;
 use syn::Type;
 use syn::{Expr, Meta, MetaNameValue};
 
@@ -111,6 +113,45 @@ pub fn find_attr_by_name(attrs: &Vec<Attribute>, name: &str) -> Option<Expr> {
                 if let Expr::Lit(syn::ExprLit { lit, .. }) = &nmv.value {
                     if let syn::Lit::Str(lit) = lit {
                         if let Ok(v) = syn::parse_str::<MetaNameValue>(&lit.value()) {
+                            if v.path.get_ident().is_some_and(|f| f.to_string() == name) {
+                                res = Some(v.value);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    res
+}
+
+struct CustomParser {
+    pub path: Path,
+    pub eq_token: Token![=],
+    pub value: Type,
+}
+
+impl syn::parse::Parse for CustomParser {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(CustomParser {
+            path: input.parse()?,
+            eq_token: input.parse()?,
+            value: input.parse()?,
+        })
+    }
+}
+
+pub fn find_attr_by_name_type(attrs: &Vec<Attribute>, name: &str) -> Option<Type> {
+    let mut res = None;
+
+    attrs.iter().for_each(|attr| {
+        let m: &Meta = &attr.meta;
+        if let Meta::NameValue(nmv) = m {
+            if nmv.path.is_ident("doc") {
+                if let Expr::Lit(syn::ExprLit { lit, .. }) = &nmv.value {
+                    if let syn::Lit::Str(lit) = lit {
+                        if let Ok(v) = syn::parse_str::<CustomParser>(&lit.value()) {
                             if v.path.get_ident().is_some_and(|f| f.to_string() == name) {
                                 res = Some(v.value);
                             }

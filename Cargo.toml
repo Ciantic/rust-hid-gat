@@ -35,4 +35,4 @@ facet = "0.9.6"
 facet-reflect = "0.10.3"
 
 [workspace]
-members = ["bitgen"]
+members = ["bitgen", "hid-gatt"]
