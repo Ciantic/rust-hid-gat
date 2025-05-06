@@ -1,3 +1,4 @@
+use bt_only_headers::messages::HciAcl;
 use bt_only_headers::messages::*;
 use bt_only_headers::packer::*;
 
@@ -136,14 +137,14 @@ fn test_event() {
         0x0, 0x0, 0xc0, 0x3, 0x1,
     ];
     let mut packet = Packet::from_slice(&DATA);
-    let msg = HciEventMsg::from_packet(&mut packet).unwrap();
+    let msg = HciEvent::from_packet(&mut packet).unwrap();
 
-    let expected = HciEventMsg::LeMeta(LeMeta::LeConnectionComplete {
+    let expected = HciEvent::LeMeta(LeMeta::LeConnectionComplete {
         status: HciStatus::Success,
-        connection_handle: 0x0040,
+        connection_handle: ConnectionHandle(0x0040),
         role: Role::Peripheral,
         peer_address_type: AddressType::Public,
-        peer_address: [0x26, 0xe, 0xd6, 0xe8, 0xc2, 0x50],
+        peer_address: BdAddr([0x26, 0xe, 0xd6, 0xe8, 0xc2, 0x50]),
         connection_interval: 48,
         peripheral_latency: 0,
         supervision_timeout: 960,
@@ -201,7 +202,7 @@ fn test_pairing_request() {
     ];
     let mut packet = Packet::from_slice(&DATA);
     let res_msg = packet.unpack::<H4Packet>();
-    let msg = H4Packet::HciAcl {
+    let msg = H4Packet::Acl(HciAcl {
         connection_handle: ConnectionHandle(64),
         pb: PacketBoundaryFlag::FirstFlushable,
         bc: BroadcastFlag::PointToPoint,
@@ -232,7 +233,7 @@ fn test_pairing_request() {
                 _reserved: 0,
             },
         }),
-    };
+    });
     assert_eq!(res_msg.as_ref(), Ok(&msg));
 
     // Serializes back to the original bytes

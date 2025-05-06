@@ -4,25 +4,28 @@ use crate::packer::FixedSizeUtf8;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum H4Packet {
     /// id = 0x01
-    HciCommand(HciCommand),
+    Command(HciCommand),
     /// id = 0x04
-    HciEvent(HciEventMsg),
+    Event(HciEvent),
     /// id = 0x02
-    HciAcl {
-        /// bits = 12
-        connection_handle: ConnectionHandle,
+    Acl(HciAcl),
+}
 
-        /// bits = 2
-        pb: PacketBoundaryFlag,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HciAcl {
+    /// bits = 12
+    pub connection_handle: ConnectionHandle,
 
-        /// bits = 2
-        bc: BroadcastFlag,
+    /// bits = 2
+    pub pb: PacketBoundaryFlag,
 
-        /// ACL Data length
-        ///
-        /// prepend_length = u16
-        msg: L2CapMessage,
-    },
+    /// bits = 2
+    pub bc: BroadcastFlag,
+
+    /// ACL Data length
+    ///
+    /// prepend_length = u16
+    pub msg: L2CapMessage,
 }
 
 /// L2CAP Message
@@ -247,7 +250,7 @@ pub enum HciCommand {
 }
 
 /// HCI OpCode
-#[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Default, Hash)]
 pub struct OpCode(
     /// Command (OCF)
     /// bits = 10
@@ -277,10 +280,10 @@ pub enum LeMeta {
     /// id = 0x01
     LeConnectionComplete {
         status: HciStatus,
-        connection_handle: u16,
+        connection_handle: ConnectionHandle,
         role: Role,
         peer_address_type: AddressType,
-        peer_address: [u8; 6],
+        peer_address: BdAddr,
         connection_interval: u16,
         peripheral_latency: u16,
         supervision_timeout: u16,
@@ -332,7 +335,7 @@ pub enum LeMeta {
 /// id_type = u8
 /// length_after_id = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HciEventMsg {
+pub enum HciEvent {
     /// id = 0x05
     DisconnectComplete {
         status: HciStatus,
@@ -359,6 +362,8 @@ pub enum HciEventMsg {
 
     /// id = 0x0E
     CommandComplete {
+        /// The number of HCI Command packets which are allowed to be sent to
+        /// the Controller from the Host.
         num_hci_command_packets: u8,
         command_opcode: OpCode,
         status: HciStatus,

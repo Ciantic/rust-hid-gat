@@ -3,18 +3,13 @@ use crate::packer::*;
 impl FromToPacket for H4Packet {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         if bytes.next_if_eq::<u8>(&0x01) {
-            return Ok(H4Packet::HciCommand(bytes.unpack()?));
+            return Ok(H4Packet::Command(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x04) {
-            return Ok(H4Packet::HciEvent(bytes.unpack()?));
+            return Ok(H4Packet::Event(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x02) {
-            return Ok(H4Packet::HciAcl {
-                connection_handle: bytes.set_bits(12).unpack()?,
-                pb: bytes.set_bits(2).unpack()?,
-                bc: bytes.set_bits(2).unpack()?,
-                msg: bytes.unpack_length::<u16>()?.unpack()?,
-            });
+            return Ok(H4Packet::Acl(bytes.unpack()?));
         }
         Err(
             PacketError::Unspecified(
@@ -24,20 +19,17 @@ impl FromToPacket for H4Packet {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            H4Packet::HciCommand(m0) => {
+            H4Packet::Command(m0) => {
                 bytes.pack::<u8>(&0x01)?;
                 bytes.pack(m0)?;
             }
-            H4Packet::HciEvent(m0) => {
+            H4Packet::Event(m0) => {
                 bytes.pack::<u8>(&0x04)?;
                 bytes.pack(m0)?;
             }
-            H4Packet::HciAcl { connection_handle, pb, bc, msg } => {
+            H4Packet::Acl(m0) => {
                 bytes.pack::<u8>(&0x02)?;
-                bytes.set_bits(12).pack(connection_handle)?;
-                bytes.set_bits(2).pack(pb)?;
-                bytes.set_bits(2).pack(bc)?;
-                bytes.pack_length::<u16>()?.pack(msg)?;
+                bytes.pack(m0)?;
             }
         };
         Ok(())
@@ -46,10 +38,31 @@ impl FromToPacket for H4Packet {
 impl PacketIdentifier<u8> for H4Packet {
     fn get_id(&self) -> u8 {
         match self {
-            H4Packet::HciCommand(m0) => 0x01,
-            H4Packet::HciEvent(m0) => 0x04,
-            H4Packet::HciAcl { connection_handle, pb, bc, msg } => 0x02,
+            H4Packet::Command(m0) => 0x01,
+            H4Packet::Event(m0) => 0x04,
+            H4Packet::Acl(m0) => 0x02,
         }
+    }
+}
+impl FromToPacket for HciAcl {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(HciAcl {
+            connection_handle: bytes.set_bits(12).unpack()?,
+            pb: bytes.set_bits(2).unpack()?,
+            bc: bytes.set_bits(2).unpack()?,
+            msg: bytes.unpack_length::<u16>()?.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            HciAcl { connection_handle, pb, bc, msg } => {
+                bytes.set_bits(12).pack(connection_handle)?;
+                bytes.set_bits(2).pack(pb)?;
+                bytes.set_bits(2).pack(bc)?;
+                bytes.pack_length::<u16>()?.pack(msg)?;
+            }
+        };
+        Ok(())
     }
 }
 impl FromToPacket for L2CapMessage {
@@ -941,11 +954,11 @@ impl PacketIdentifier<u8> for LeMeta {
         }
     }
 }
-impl FromToPacket for HciEventMsg {
+impl FromToPacket for HciEvent {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         if bytes.next_if_eq::<u8>(&0x05) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciEventMsg::DisconnectComplete {
+            return Ok(HciEvent::DisconnectComplete {
                 status: bytes.unpack()?,
                 connection_handle: bytes.unpack()?,
                 reason: bytes.unpack()?,
@@ -953,7 +966,7 @@ impl FromToPacket for HciEventMsg {
         }
         if bytes.next_if_eq::<u8>(&0x08) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciEventMsg::EncryptionChange {
+            return Ok(HciEvent::EncryptionChange {
                 status: bytes.unpack()?,
                 connection_handle: bytes.unpack()?,
                 encryption_enabled: bytes.unpack()?,
@@ -961,7 +974,7 @@ impl FromToPacket for HciEventMsg {
         }
         if bytes.next_if_eq::<u8>(&0x13) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciEventMsg::NumberOfCompletedPackets {
+            return Ok(HciEvent::NumberOfCompletedPackets {
                 num_hci_command_packets: bytes.unpack()?,
                 connection_handle: bytes.unpack()?,
                 num_completed_packets: bytes.unpack()?,
@@ -969,11 +982,11 @@ impl FromToPacket for HciEventMsg {
         }
         if bytes.next_if_eq::<u8>(&0x3e) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciEventMsg::LeMeta(bytes.unpack()?));
+            return Ok(HciEvent::LeMeta(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x0E) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciEventMsg::CommandComplete {
+            return Ok(HciEvent::CommandComplete {
                 num_hci_command_packets: bytes.unpack()?,
                 command_opcode: bytes.unpack()?,
                 status: bytes.unpack()?,
@@ -982,7 +995,7 @@ impl FromToPacket for HciEventMsg {
         }
         if bytes.next_if_eq::<u8>(&0x0F) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciEventMsg::CommandStatus {
+            return Ok(HciEvent::CommandStatus {
                 status: bytes.unpack()?,
                 num_hci_command_packets: bytes.unpack()?,
                 command_opcode: bytes.unpack()?,
@@ -990,24 +1003,24 @@ impl FromToPacket for HciEventMsg {
         }
         if bytes.next_if_eq::<u8>(&0xFF) {
             bytes.unpack_length::<u8>()?;
-            return Ok(HciEventMsg::VendorSpecific(bytes.unpack()?));
+            return Ok(HciEvent::VendorSpecific(bytes.unpack()?));
         }
         Err(
             PacketError::Unspecified(
-                format!("No matching variant found for {}", stringify!(HciEventMsg)),
+                format!("No matching variant found for {}", stringify!(HciEvent)),
             ),
         )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            HciEventMsg::DisconnectComplete { status, connection_handle, reason } => {
+            HciEvent::DisconnectComplete { status, connection_handle, reason } => {
                 bytes.pack::<u8>(&0x05)?;
                 bytes.pack_length::<u8>()?;
                 bytes.pack(status)?;
                 bytes.pack(connection_handle)?;
                 bytes.pack(reason)?;
             }
-            HciEventMsg::EncryptionChange {
+            HciEvent::EncryptionChange {
                 status,
                 connection_handle,
                 encryption_enabled,
@@ -1018,7 +1031,7 @@ impl FromToPacket for HciEventMsg {
                 bytes.pack(connection_handle)?;
                 bytes.pack(encryption_enabled)?;
             }
-            HciEventMsg::NumberOfCompletedPackets {
+            HciEvent::NumberOfCompletedPackets {
                 num_hci_command_packets,
                 connection_handle,
                 num_completed_packets,
@@ -1029,12 +1042,12 @@ impl FromToPacket for HciEventMsg {
                 bytes.pack(connection_handle)?;
                 bytes.pack(num_completed_packets)?;
             }
-            HciEventMsg::LeMeta(m0) => {
+            HciEvent::LeMeta(m0) => {
                 bytes.pack::<u8>(&0x3e)?;
                 bytes.pack_length::<u8>()?;
                 bytes.pack(m0)?;
             }
-            HciEventMsg::CommandComplete {
+            HciEvent::CommandComplete {
                 num_hci_command_packets,
                 command_opcode,
                 status,
@@ -1047,7 +1060,7 @@ impl FromToPacket for HciEventMsg {
                 bytes.pack(status)?;
                 bytes.pack(data)?;
             }
-            HciEventMsg::CommandStatus {
+            HciEvent::CommandStatus {
                 status,
                 num_hci_command_packets,
                 command_opcode,
@@ -1058,7 +1071,7 @@ impl FromToPacket for HciEventMsg {
                 bytes.pack(num_hci_command_packets)?;
                 bytes.pack(command_opcode)?;
             }
-            HciEventMsg::VendorSpecific(m0) => {
+            HciEvent::VendorSpecific(m0) => {
                 bytes.pack::<u8>(&0xFF)?;
                 bytes.pack_length::<u8>()?;
                 bytes.pack(m0)?;
@@ -1067,33 +1080,33 @@ impl FromToPacket for HciEventMsg {
         Ok(())
     }
 }
-impl PacketIdentifier<u8> for HciEventMsg {
+impl PacketIdentifier<u8> for HciEvent {
     fn get_id(&self) -> u8 {
         match self {
-            HciEventMsg::DisconnectComplete { status, connection_handle, reason } => 0x05,
-            HciEventMsg::EncryptionChange {
+            HciEvent::DisconnectComplete { status, connection_handle, reason } => 0x05,
+            HciEvent::EncryptionChange {
                 status,
                 connection_handle,
                 encryption_enabled,
             } => 0x08,
-            HciEventMsg::NumberOfCompletedPackets {
+            HciEvent::NumberOfCompletedPackets {
                 num_hci_command_packets,
                 connection_handle,
                 num_completed_packets,
             } => 0x13,
-            HciEventMsg::LeMeta(m0) => 0x3e,
-            HciEventMsg::CommandComplete {
+            HciEvent::LeMeta(m0) => 0x3e,
+            HciEvent::CommandComplete {
                 num_hci_command_packets,
                 command_opcode,
                 status,
                 data,
             } => 0x0E,
-            HciEventMsg::CommandStatus {
+            HciEvent::CommandStatus {
                 status,
                 num_hci_command_packets,
                 command_opcode,
             } => 0x0F,
-            HciEventMsg::VendorSpecific(m0) => 0xFF,
+            HciEvent::VendorSpecific(m0) => 0xFF,
         }
     }
 }
