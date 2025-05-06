@@ -8,7 +8,7 @@ use std::{
 const BLUETOOTH_BASE_UUID: &str = "00000000-0000-1000-8000-00805F9B34FB";
 
 // use crate::hciserver::DummyHciServer;
-use bt_only_headers::messages::{HciAcl, *};
+use bt_only_headers::messages::{EvtCommandComplete, EvtCommandStatus, HciAcl, *};
 use bt_only_headers::packer::FixedSizeUtf8;
 use bt_only_headers::packer::PacketIdentifier;
 
@@ -38,20 +38,20 @@ impl HciManager {
     fn process_event(&mut self, event: &HciEvent) -> Result<(), HciError> {
         use HciEvent::*;
         match event {
-            CommandComplete {
+            CommandComplete(CommandComplete {
                 num_hci_command_packets,
                 command_opcode,
                 status,
                 data,
-            } => {
+            }) => {
                 self.allowed_hci_command_packets = *num_hci_command_packets;
             }
 
-            CommandStatus {
+            CommandStatus(CommandStatus {
                 num_hci_command_packets,
                 command_opcode,
                 status,
-            } => {
+            }) => {
                 self.allowed_hci_command_packets = *num_hci_command_packets;
             }
             _ => {}
@@ -113,13 +113,9 @@ impl HciManager {
 fn initialize_bluetooth() -> VecDeque<H4Packet> {
     vec![
         (HciCommand::Reset),
-        (HciCommand::SetEventMask {
-            event_mask: 0x3DBFF807FFFBFFFF,
-        }),
-        (HciCommand::LeSetEventMask {
-            event_mask: 0x00000000000005ff,
-        }),
-        (HciCommand::WriteScanEnable(ScanEnable::InquiryScanEnabled_PageScanEnabled)),
+        (HciCommand::SetEventMask(0x3DBFF807FFFBFFFF)),
+        (HciCommand::LeSetEventMask(0x00000000000005ff)),
+        (HciCommand::WriteScanEnable(CmdScanEnable::InquiryScanEnabled_PageScanEnabled)),
         (HciCommand::WriteConnectionAcceptTimeout(16288)),
         (HciCommand::WritePageTimeout(16384)),
         (HciCommand::ReadLocalSupportedCommands),

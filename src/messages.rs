@@ -11,6 +11,94 @@ pub enum H4Packet {
     Acl(HciAcl),
 }
 
+/// length_after_id = u8
+/// id_type = OpCode
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HciCommand {
+    /// id = OpCode(0x0006, 0x01)
+    Disconnect(CmdDisconnect),
+
+    /// id = OpCode(0x0003, 0x03)
+    Reset,
+
+    /// id = OpCode(0x0001, 0x03)
+    SetEventMask(u64),
+
+    /// id = OpCode(0x0002, 0x04)
+    ReadLocalSupportedCommands,
+
+    /// id = OpCode(0x0009, 0x04)
+    ReadBdAddr,
+
+    /// id = OpCode(0x001a, 0x03)
+    WriteScanEnable(CmdScanEnable),
+
+    /// id = OpCode(0x0016, 0x03)
+    WriteConnectionAcceptTimeout(u16),
+
+    /// id = OpCode(0x0018, 0x03)
+    WritePageTimeout(u16),
+
+    /// id = OpCode(0x0013, 0x03)
+    WriteLocalName(FixedSizeUtf8<248>),
+
+    /// id = OpCode(0x0014, 0x03)
+    ReadLocalName(CmdReadLocalName),
+
+    /// id = OpCode(0x0001, 0x08)
+    LeSetEventMask(u64),
+
+    /// id = OpCode(0x0002, 0x08)
+    LeReadBufferSize,
+
+    /// id = OpCode(0x0005, 0x08)
+    LeSetRandomAddress(BdAddr),
+
+    /// id = OpCode(0x0006, 0x08)
+    LeSetAdvertisingParameters(LeSetAdvertisingParameters),
+
+    /// id = OpCode(0x0008, 0x08)
+    LeSetAdvertisingData(LeSetAdvertisingData),
+
+    /// id = OpCode(0x0025, 0x08)
+    LeReadLocalP256PublicKey,
+
+    /// id = OpCode(0x000A, 0x08)
+    LeSetAdvertisingEnable(bool),
+
+    /// id = OpCode(0x0022, 0x08)
+    LeSetDataLength(LeSetDataLength),
+
+    /// id = OpCode(0x001A, 0x08)
+    LeLongTermKeyRequestReply(LeLongTermKeyRequestReply),
+}
+
+/// id_type = u8
+/// length_after_id = u8
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HciEvent {
+    /// id = 0x05
+    DisconnectComplete(EvtDisconnectComplete),
+
+    /// id = 0x08
+    EncryptionChange(EvtEncryptionChange),
+
+    /// id = 0x13
+    NumberOfCompletedPackets(EvtNumberOfCompletedPackets),
+
+    /// id = 0x3e
+    LeMeta(LeMeta),
+
+    /// id = 0x0E
+    CommandComplete(EvtCommandComplete),
+
+    /// id = 0x0F
+    CommandStatus(EvtCommandStatus),
+
+    /// id = 0xFF
+    VendorSpecific(Vec<u8>),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HciAcl {
     /// bits = 12
@@ -51,202 +139,236 @@ pub enum L2CapMessage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttPdu {
     /// id = 0x02
-    AttExchangeMtuRequest { mtu: u16 },
+    ExchangeMtuRequest(u16),
 
     /// id = 0x03
-    AttExchangeMtuResponse { mtu: u16 },
+    ExchangeMtuResponse(u16),
 
     /// id = 0x04
-    AttFindInformationRequest {
-        starting_handle: u16,
-        ending_handle: u16,
-    },
+    FindInformationRequest(AttFindInformationRequest),
 
     /// id = 0x05
-    AttFindInformationResponse {
-        format: u8,
-        information: Vec<(u16, u16)>,
-    },
+    FindInformationResponse(AttFindInformationResponse),
 
     /// id = 0x06
-    AttFindByTypeValueRequest {
-        starting_handle: u16,
-        ending_handle: u16,
-        uuid: u16,
-        value: Vec<u8>,
-    },
+    FindByTypeValueRequest(AttFindByTypeValueRequest),
 
     /// id = 0x07
-    AttFindByTypeValueResponse {
-        handles_information: Vec<(u16, u16)>,
-    },
+    FindByTypeValueResponse(AttFindByTypeValueResponse),
 
     /// id = 0x08
-    AttReadByTypeRequest {
-        starting_handle: u16,
-        ending_handle: u16,
-
-        /// 2 or 16 bytes
-        uuid: Vec<u8>,
-    },
+    ReadByTypeRequest(AttReadByTypeRequest),
 
     /// id = 0x09
-    AttReadByTypeResponse {
-        /// The Length parameter shall be set to the size of one attribute handle-value pair.
-        pair_length: u8,
-
-        // Following can't work, because Vec reads to the end of the buffer, falling back to Vec<u8> instead
-        // values: Vec<(u16, Vec<u8>)>,
-        /// (Handle, value pairs)
-        values: Vec<u8>,
-    },
+    ReadByTypeResponse(AttReadByTypeResponse),
 
     /// id = 0x0A
-    AttReadRequest { handle: u16 },
+    ReadRequest(AttReadRequest),
 
     /// id = 0x0B
-    AttReadResponse { value: Vec<u8> },
+    ReadResponse(AttReadResponse),
 
     /// id = 0x18
-    AttExecuteWriteRequest { flags: u8 },
+    ExecuteWriteRequest(AttExecuteWriteRequest),
 
     /// id = 0x19
-    AttExecuteWriteResponse,
+    ExecuteWriteResponse,
 
     /// id = 0x1B
-    AttHandleValueNotification { handle: u16, value: Vec<u8> },
+    HandleValueNotification(AttHandleValueNotification),
 
     /// id = _
-    AttUnknown(u8, Vec<u8>),
+    Unknown(u8, Vec<u8>),
 }
 
 /// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SmpPdu {
     /// id = 0x01
-    SmpPairingRequest {
-        io_capability: IOCapability,
-        oob_data_flag: OOBDataFlag,
-        authentication_requirements: AuthenticationRequirements,
-        max_encryption_key_size: u8,
-        initiator_key_distribution: KeyDistributionFlags,
-        responder_key_distribution: KeyDistributionFlags,
-    },
+    PairingRequest(SmpPairingReqRes),
 
     /// id = 0x02
-    SmpPairingResponse {
-        io_capability: IOCapability,
-        oob_data_flag: OOBDataFlag,
-        authentication_requirements: AuthenticationRequirements,
-        max_encryption_key_size: u8,
-        initiator_key_distribution: KeyDistributionFlags,
-        responder_key_distribution: KeyDistributionFlags,
-    },
+    PairingResponse(SmpPairingReqRes),
 
     /// id = 0x03
-    SmpPairingConfirmation { confirm_value: u128 },
+    PairingConfirmation(SmpPairingConfirmation),
 
     /// id = 0x04
-    SmpPairingRandom { random_value: u128 },
+    PairingRandom(SmpPairingRandom),
 
     /// id = 0x05
-    SmpPairingFailed(SmpPairingFailure),
+    PairingFailed(SmpPairingFailure),
 
     /// id = 0x06
-    SmpEncryptionInformation { long_term_key: u128 },
+    EncryptionInformation(SmpEncryptionInformation),
 
     /// id = 0x07
-    SmpCentralIdentification {
-        encrypted_diversifier: u16,
-        random_number: u64,
-    },
+    CentralIdentification(SmpCentralIdentification),
 }
 
-/// length_after_id = u8
-/// id_type = OpCode
+/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HciCommand {
-    /// id = OpCode(0x0006, 0x01)
-    Disconnect {
-        connection_handle: ConnectionHandle,
-        reason: u8,
-    },
+pub enum LeMeta {
+    /// id = 0x01
+    LeConnectionComplete(LeConnectionComplete),
 
-    /// id = OpCode(0x0003, 0x03)
-    Reset,
+    /// id = 0x02
+    LeAdvertisingReport(Vec<u8>),
 
-    /// id = OpCode(0x0001, 0x03)
-    SetEventMask { event_mask: u64 },
+    /// id = 0x03
+    LeConnectionUpdateComplete(LeConnectionUpdateComplete),
 
-    /// id = OpCode(0x0002, 0x04)
-    ReadLocalSupportedCommands,
+    /// id = 0x04
+    LeReadRemoteFeaturesPage0Complete(LeReadRemoteFeaturesPage0Complete),
 
-    /// id = OpCode(0x0009, 0x04)
-    ReadBdAddr,
+    /// id = 0x05
+    LeLongTermKeyRequest(LeLongTermKeyRequest),
 
-    /// id = OpCode(0x001a, 0x03)
-    WriteScanEnable(ScanEnable),
+    /// id = 0x07
+    LeDataLengthChange(LeDataLengthChange),
 
-    /// id = OpCode(0x0016, 0x03)
-    WriteConnectionAcceptTimeout(u16),
+    /// id = 0x08
+    LeReadLocalP256PublicKeyComplete(LeReadLocalP256PublicKeyComplete),
+}
 
-    /// id = OpCode(0x0018, 0x03)
-    WritePageTimeout(u16),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttFindInformationRequest {
+    pub starting_handle: u16,
+    pub ending_handle: u16,
+}
 
-    /// id = OpCode(0x0013, 0x03)
-    WriteLocalName(FixedSizeUtf8<248>),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttFindInformationResponse {
+    pub format: u8,
+    pub information: Vec<(u16, u16)>,
+}
 
-    /// id = OpCode(0x0014, 0x03)
-    ReadLocalName {
-        status: HciStatus,
-        name: FixedSizeUtf8<248>,
-    },
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttFindByTypeValueRequest {
+    pub starting_handle: u16,
+    pub ending_handle: u16,
+    pub uuid: u16,
+    pub value: Vec<u8>,
+}
 
-    /// id = OpCode(0x0001, 0x08)
-    LeSetEventMask { event_mask: u64 },
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttFindByTypeValueResponse {
+    pub handles_information: Vec<(u16, u16)>,
+}
 
-    /// id = OpCode(0x0002, 0x08)
-    LeReadBufferSize,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttReadByTypeRequest {
+    pub starting_handle: u16,
+    pub ending_handle: u16,
 
-    /// id = OpCode(0x0005, 0x08)
-    LeSetRandomAddress(BdAddr),
+    /// 2 or 16 bytes
+    pub uuid: Vec<u8>,
+}
 
-    /// id = OpCode(0x0006, 0x08)
-    LeSetAdvertisingParameters {
-        advertising_interval_min: u16,
-        advertising_interval_max: u16,
-        advertising_type: u8,
-        own_address_type: u8,
-        peer_address_type: u8,
-        peer_address: BdAddr,
-        advertising_channel_map: u8,
-        advertising_filter_policy: u8,
-    },
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttReadByTypeResponse {
+    /// The Length parameter shall be set to the size of one attribute handle-value pair.
+    pub pair_length: u8,
 
-    /// id = OpCode(0x0008, 0x08)
-    LeSetAdvertisingData {
-        advertising_data_length: u8,
-        advertising_data: [u8; 31],
-    },
+    // Following can't work, because Vec reads to the end of the buffer, falling back to Vec<u8> instead
+    // values: Vec<(u16, Vec<u8>)>,
+    /// (Handle, value pairs)
+    pub values: Vec<u8>,
+}
 
-    /// id = OpCode(0x0025, 0x08)
-    LeReadLocalP256PublicKey,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttReadRequest {
+    pub handle: u16,
+}
 
-    /// id = OpCode(0x000A, 0x08)
-    LeSetAdvertisingEnable(bool),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttReadResponse {
+    pub value: Vec<u8>,
+}
 
-    /// id = OpCode(0x0022, 0x08)
-    LeSetDataLength {
-        connection_handle: ConnectionHandle,
-        tx_octets: u16,
-        tx_time: u16,
-    },
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttExecuteWriteRequest {
+    pub flags: u8,
+}
 
-    /// id = OpCode(0x001A, 0x08)
-    LeLongTermKeyRequestReply {
-        connection_handle: ConnectionHandle,
-        long_term_key: u128,
-    },
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttHandleValueNotification {
+    pub handle: u16,
+    pub value: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmpPairingReqRes {
+    pub io_capability: IOCapability,
+    pub oob_data_flag: OOBDataFlag,
+    pub authentication_requirements: AuthenticationRequirements,
+    pub max_encryption_key_size: u8,
+    pub initiator_key_distribution: KeyDistributionFlags,
+    pub responder_key_distribution: KeyDistributionFlags,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmpPairingConfirmation {
+    pub confirm_value: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmpPairingRandom {
+    pub random_value: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmpEncryptionInformation {
+    pub long_term_key: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmpCentralIdentification {
+    pub encrypted_diversifier: u16,
+    pub random_number: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CmdDisconnect {
+    pub connection_handle: ConnectionHandle,
+    pub reason: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CmdReadLocalName {
+    pub status: HciStatus,
+    pub name: FixedSizeUtf8<248>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeSetAdvertisingParameters {
+    pub advertising_interval_min: u16,
+    pub advertising_interval_max: u16,
+    pub advertising_type: u8,
+    pub own_address_type: u8,
+    pub peer_address_type: u8,
+    pub peer_address: BdAddr,
+    pub advertising_channel_map: u8,
+    pub advertising_filter_policy: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeSetAdvertisingData {
+    pub advertising_data_length: u8,
+    pub advertising_data: [u8; 31],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeSetDataLength {
+    pub connection_handle: ConnectionHandle,
+    pub tx_octets: u16,
+    pub tx_time: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeLongTermKeyRequestReply {
+    pub connection_handle: ConnectionHandle,
+    pub long_term_key: u128,
 }
 
 /// HCI OpCode
@@ -263,7 +385,7 @@ pub struct OpCode(
 /// id_type = u8
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ScanEnable {
+pub enum CmdScanEnable {
     /// id = 0x00
     NoScans,
     /// id = 0x01
@@ -274,110 +396,93 @@ pub enum ScanEnable {
     InquiryScanEnabled_PageScanEnabled,
 }
 
-/// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LeMeta {
-    /// id = 0x01
-    LeConnectionComplete {
-        status: HciStatus,
-        connection_handle: ConnectionHandle,
-        role: Role,
-        peer_address_type: AddressType,
-        peer_address: BdAddr,
-        connection_interval: u16,
-        peripheral_latency: u16,
-        supervision_timeout: u16,
-        central_clock_accuracy: ClockAccuracy,
-    },
-
-    /// id = 0x02
-    LeAdvertisingReport(Vec<u8>),
-
-    /// id = 0x03
-    LeConnectionUpdateComplete {
-        status: HciStatus,
-        connection_handle: ConnectionHandle,
-        interval: u16,
-        latency: u16,
-        timeout: u16,
-    },
-
-    /// id = 0x04
-    LeReadRemoteFeaturesPage0Complete {
-        status: HciStatus,
-        connection_handle: ConnectionHandle,
-        le_features: u64,
-    },
-
-    /// id = 0x05
-    LeLongTermKeyRequest {
-        connection_handle: ConnectionHandle,
-        random_number: u64,
-        encrypted_diversifier: u16,
-    },
-
-    /// id = 0x07
-    LeDataLengthChange {
-        connection_handle: ConnectionHandle,
-        max_tx_octets: u16,
-        max_tx_time: u16,
-        max_rx_octets: u16,
-        max_rx_time: u16,
-    },
-
-    /// id = 0x08
-    LeReadLocalP256PublicKeyComplete {
-        status: HciStatus,
-        public_key: [u8; 64],
-    },
+pub struct LeConnectionComplete {
+    pub status: HciStatus,
+    pub connection_handle: ConnectionHandle,
+    pub role: Role,
+    pub peer_address_type: AddressType,
+    pub peer_address: BdAddr,
+    pub connection_interval: u16,
+    pub peripheral_latency: u16,
+    pub supervision_timeout: u16,
+    pub central_clock_accuracy: ClockAccuracy,
 }
 
-/// id_type = u8
-/// length_after_id = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HciEvent {
-    /// id = 0x05
-    DisconnectComplete {
-        status: HciStatus,
-        connection_handle: ConnectionHandle,
-        reason: u8,
-    },
+pub struct LeConnectionUpdateComplete {
+    pub status: HciStatus,
+    pub connection_handle: ConnectionHandle,
+    pub interval: u16,
+    pub latency: u16,
+    pub timeout: u16,
+}
 
-    /// id = 0x08
-    EncryptionChange {
-        status: HciStatus,
-        connection_handle: ConnectionHandle,
-        encryption_enabled: bool,
-    },
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeReadRemoteFeaturesPage0Complete {
+    pub status: HciStatus,
+    pub connection_handle: ConnectionHandle,
+    pub le_features: u64,
+}
 
-    /// id = 0x13
-    NumberOfCompletedPackets {
-        num_hci_command_packets: u8,
-        connection_handle: ConnectionHandle,
-        num_completed_packets: u16,
-    },
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeLongTermKeyRequest {
+    pub connection_handle: ConnectionHandle,
+    pub random_number: u64,
+    pub encrypted_diversifier: u16,
+}
 
-    /// id = 0x3e
-    LeMeta(LeMeta),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeDataLengthChange {
+    pub connection_handle: ConnectionHandle,
+    pub max_tx_octets: u16,
+    pub max_tx_time: u16,
+    pub max_rx_octets: u16,
+    pub max_rx_time: u16,
+}
 
-    /// id = 0x0E
-    CommandComplete {
-        /// The number of HCI Command packets which are allowed to be sent to
-        /// the Controller from the Host.
-        num_hci_command_packets: u8,
-        command_opcode: OpCode,
-        status: HciStatus,
-        data: Vec<u8>,
-    },
-    /// id = 0x0F
-    CommandStatus {
-        status: HciStatus,
-        num_hci_command_packets: u8,
-        command_opcode: OpCode,
-    },
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeReadLocalP256PublicKeyComplete {
+    pub status: HciStatus,
+    pub public_key: [u8; 64],
+}
 
-    /// id = 0xFF
-    VendorSpecific(Vec<u8>),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvtDisconnectComplete {
+    pub status: HciStatus,
+    pub connection_handle: ConnectionHandle,
+    pub reason: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvtEncryptionChange {
+    pub status: HciStatus,
+    pub connection_handle: ConnectionHandle,
+    pub encryption_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvtNumberOfCompletedPackets {
+    pub num_hci_command_packets: u8,
+    pub connection_handle: ConnectionHandle,
+    pub num_completed_packets: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvtCommandComplete {
+    /// The number of HCI Command packets which are allowed to be sent to
+    /// the Controller from the Host.
+    pub num_hci_command_packets: u8,
+    pub command_opcode: OpCode,
+    pub status: HciStatus,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvtCommandStatus {
+    pub status: HciStatus,
+    pub num_hci_command_packets: u8,
+    pub command_opcode: OpCode,
 }
 
 /// id_type = u8
@@ -439,8 +544,6 @@ pub struct ConnectionHandle(pub u16); // max value 0x0EFF
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BdAddr(pub [u8; 6]);
-
-// SMP
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct KeyDistributionFlags {

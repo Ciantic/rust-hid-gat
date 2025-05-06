@@ -44,6 +44,301 @@ impl PacketIdentifier<u8> for H4Packet {
         }
     }
 }
+impl FromToPacket for HciCommand {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0006, 0x01)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::Disconnect(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0003, 0x03)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::Reset);
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0001, 0x03)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::SetEventMask(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0002, 0x04)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::ReadLocalSupportedCommands);
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0009, 0x04)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::ReadBdAddr);
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x001a, 0x03)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::WriteScanEnable(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0016, 0x03)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::WriteConnectionAcceptTimeout(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0018, 0x03)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::WritePageTimeout(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0013, 0x03)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::WriteLocalName(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0014, 0x03)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::ReadLocalName(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0001, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeSetEventMask(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0002, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeReadBufferSize);
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0005, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeSetRandomAddress(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0006, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeSetAdvertisingParameters(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0008, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeSetAdvertisingData(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0025, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeReadLocalP256PublicKey);
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x000A, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeSetAdvertisingEnable(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x0022, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeSetDataLength(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<OpCode>(&OpCode(0x001A, 0x08)) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciCommand::LeLongTermKeyRequestReply(bytes.unpack()?));
+        }
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(HciCommand)),
+            ),
+        )
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            HciCommand::Disconnect(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0006, 0x01))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::Reset => {
+                bytes.pack::<OpCode>(&OpCode(0x0003, 0x03))?;
+                bytes.pack_length::<u8>()?;
+            }
+            HciCommand::SetEventMask(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0001, 0x03))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::ReadLocalSupportedCommands => {
+                bytes.pack::<OpCode>(&OpCode(0x0002, 0x04))?;
+                bytes.pack_length::<u8>()?;
+            }
+            HciCommand::ReadBdAddr => {
+                bytes.pack::<OpCode>(&OpCode(0x0009, 0x04))?;
+                bytes.pack_length::<u8>()?;
+            }
+            HciCommand::WriteScanEnable(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x001a, 0x03))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::WriteConnectionAcceptTimeout(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0016, 0x03))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::WritePageTimeout(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0018, 0x03))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::WriteLocalName(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0013, 0x03))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::ReadLocalName(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0014, 0x03))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::LeSetEventMask(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0001, 0x08))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::LeReadBufferSize => {
+                bytes.pack::<OpCode>(&OpCode(0x0002, 0x08))?;
+                bytes.pack_length::<u8>()?;
+            }
+            HciCommand::LeSetRandomAddress(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0005, 0x08))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::LeSetAdvertisingParameters(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0006, 0x08))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::LeSetAdvertisingData(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0008, 0x08))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::LeReadLocalP256PublicKey => {
+                bytes.pack::<OpCode>(&OpCode(0x0025, 0x08))?;
+                bytes.pack_length::<u8>()?;
+            }
+            HciCommand::LeSetAdvertisingEnable(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x000A, 0x08))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::LeSetDataLength(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x0022, 0x08))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciCommand::LeLongTermKeyRequestReply(m0) => {
+                bytes.pack::<OpCode>(&OpCode(0x001A, 0x08))?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl PacketIdentifier<OpCode> for HciCommand {
+    fn get_id(&self) -> OpCode {
+        match self {
+            HciCommand::Disconnect(m0) => OpCode(0x0006, 0x01),
+            HciCommand::Reset => OpCode(0x0003, 0x03),
+            HciCommand::SetEventMask(m0) => OpCode(0x0001, 0x03),
+            HciCommand::ReadLocalSupportedCommands => OpCode(0x0002, 0x04),
+            HciCommand::ReadBdAddr => OpCode(0x0009, 0x04),
+            HciCommand::WriteScanEnable(m0) => OpCode(0x001a, 0x03),
+            HciCommand::WriteConnectionAcceptTimeout(m0) => OpCode(0x0016, 0x03),
+            HciCommand::WritePageTimeout(m0) => OpCode(0x0018, 0x03),
+            HciCommand::WriteLocalName(m0) => OpCode(0x0013, 0x03),
+            HciCommand::ReadLocalName(m0) => OpCode(0x0014, 0x03),
+            HciCommand::LeSetEventMask(m0) => OpCode(0x0001, 0x08),
+            HciCommand::LeReadBufferSize => OpCode(0x0002, 0x08),
+            HciCommand::LeSetRandomAddress(m0) => OpCode(0x0005, 0x08),
+            HciCommand::LeSetAdvertisingParameters(m0) => OpCode(0x0006, 0x08),
+            HciCommand::LeSetAdvertisingData(m0) => OpCode(0x0008, 0x08),
+            HciCommand::LeReadLocalP256PublicKey => OpCode(0x0025, 0x08),
+            HciCommand::LeSetAdvertisingEnable(m0) => OpCode(0x000A, 0x08),
+            HciCommand::LeSetDataLength(m0) => OpCode(0x0022, 0x08),
+            HciCommand::LeLongTermKeyRequestReply(m0) => OpCode(0x001A, 0x08),
+        }
+    }
+}
+impl FromToPacket for HciEvent {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        if bytes.next_if_eq::<u8>(&0x05) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEvent::DisconnectComplete(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<u8>(&0x08) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEvent::EncryptionChange(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<u8>(&0x13) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEvent::NumberOfCompletedPackets(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<u8>(&0x3e) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEvent::LeMeta(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<u8>(&0x0E) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEvent::CommandComplete(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<u8>(&0x0F) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEvent::CommandStatus(bytes.unpack()?));
+        }
+        if bytes.next_if_eq::<u8>(&0xFF) {
+            bytes.unpack_length::<u8>()?;
+            return Ok(HciEvent::VendorSpecific(bytes.unpack()?));
+        }
+        Err(
+            PacketError::Unspecified(
+                format!("No matching variant found for {}", stringify!(HciEvent)),
+            ),
+        )
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            HciEvent::DisconnectComplete(m0) => {
+                bytes.pack::<u8>(&0x05)?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciEvent::EncryptionChange(m0) => {
+                bytes.pack::<u8>(&0x08)?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciEvent::NumberOfCompletedPackets(m0) => {
+                bytes.pack::<u8>(&0x13)?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciEvent::LeMeta(m0) => {
+                bytes.pack::<u8>(&0x3e)?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciEvent::CommandComplete(m0) => {
+                bytes.pack::<u8>(&0x0E)?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciEvent::CommandStatus(m0) => {
+                bytes.pack::<u8>(&0x0F)?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+            HciEvent::VendorSpecific(m0) => {
+                bytes.pack::<u8>(&0xFF)?;
+                bytes.pack_length::<u8>()?;
+                bytes.pack(m0)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl PacketIdentifier<u8> for HciEvent {
+    fn get_id(&self) -> u8 {
+        match self {
+            HciEvent::DisconnectComplete(m0) => 0x05,
+            HciEvent::EncryptionChange(m0) => 0x08,
+            HciEvent::NumberOfCompletedPackets(m0) => 0x13,
+            HciEvent::LeMeta(m0) => 0x3e,
+            HciEvent::CommandComplete(m0) => 0x0E,
+            HciEvent::CommandStatus(m0) => 0x0F,
+            HciEvent::VendorSpecific(m0) => 0xFF,
+        }
+    }
+}
 impl FromToPacket for HciAcl {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         Ok(HciAcl {
@@ -107,147 +402,100 @@ impl PacketIdentifier<u16> for L2CapMessage {
 impl FromToPacket for AttPdu {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         if bytes.next_if_eq::<u8>(&0x02) {
-            return Ok(AttPdu::AttExchangeMtuRequest {
-                mtu: bytes.unpack()?,
-            });
+            return Ok(AttPdu::ExchangeMtuRequest(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x03) {
-            return Ok(AttPdu::AttExchangeMtuResponse {
-                mtu: bytes.unpack()?,
-            });
+            return Ok(AttPdu::ExchangeMtuResponse(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x04) {
-            return Ok(AttPdu::AttFindInformationRequest {
-                starting_handle: bytes.unpack()?,
-                ending_handle: bytes.unpack()?,
-            });
+            return Ok(AttPdu::FindInformationRequest(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x05) {
-            return Ok(AttPdu::AttFindInformationResponse {
-                format: bytes.unpack()?,
-                information: bytes.unpack()?,
-            });
+            return Ok(AttPdu::FindInformationResponse(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x06) {
-            return Ok(AttPdu::AttFindByTypeValueRequest {
-                starting_handle: bytes.unpack()?,
-                ending_handle: bytes.unpack()?,
-                uuid: bytes.unpack()?,
-                value: bytes.unpack()?,
-            });
+            return Ok(AttPdu::FindByTypeValueRequest(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x07) {
-            return Ok(AttPdu::AttFindByTypeValueResponse {
-                handles_information: bytes.unpack()?,
-            });
+            return Ok(AttPdu::FindByTypeValueResponse(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x08) {
-            return Ok(AttPdu::AttReadByTypeRequest {
-                starting_handle: bytes.unpack()?,
-                ending_handle: bytes.unpack()?,
-                uuid: bytes.unpack()?,
-            });
+            return Ok(AttPdu::ReadByTypeRequest(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x09) {
-            return Ok(AttPdu::AttReadByTypeResponse {
-                pair_length: bytes.unpack()?,
-                values: bytes.unpack()?,
-            });
+            return Ok(AttPdu::ReadByTypeResponse(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x0A) {
-            return Ok(AttPdu::AttReadRequest {
-                handle: bytes.unpack()?,
-            });
+            return Ok(AttPdu::ReadRequest(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x0B) {
-            return Ok(AttPdu::AttReadResponse {
-                value: bytes.unpack()?,
-            });
+            return Ok(AttPdu::ReadResponse(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x18) {
-            return Ok(AttPdu::AttExecuteWriteRequest {
-                flags: bytes.unpack()?,
-            });
+            return Ok(AttPdu::ExecuteWriteRequest(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x19) {
-            return Ok(AttPdu::AttExecuteWriteResponse);
+            return Ok(AttPdu::ExecuteWriteResponse);
         }
         if bytes.next_if_eq::<u8>(&0x1B) {
-            return Ok(AttPdu::AttHandleValueNotification {
-                handle: bytes.unpack()?,
-                value: bytes.unpack()?,
-            });
+            return Ok(AttPdu::HandleValueNotification(bytes.unpack()?));
         }
-        Ok(AttPdu::AttUnknown(bytes.unpack()?, bytes.unpack()?))
+        Ok(AttPdu::Unknown(bytes.unpack()?, bytes.unpack()?))
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            AttPdu::AttExchangeMtuRequest { mtu } => {
+            AttPdu::ExchangeMtuRequest(m0) => {
                 bytes.pack::<u8>(&0x02)?;
-                bytes.pack(mtu)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttExchangeMtuResponse { mtu } => {
+            AttPdu::ExchangeMtuResponse(m0) => {
                 bytes.pack::<u8>(&0x03)?;
-                bytes.pack(mtu)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttFindInformationRequest { starting_handle, ending_handle } => {
+            AttPdu::FindInformationRequest(m0) => {
                 bytes.pack::<u8>(&0x04)?;
-                bytes.pack(starting_handle)?;
-                bytes.pack(ending_handle)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttFindInformationResponse { format, information } => {
+            AttPdu::FindInformationResponse(m0) => {
                 bytes.pack::<u8>(&0x05)?;
-                bytes.pack(format)?;
-                bytes.pack(information)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttFindByTypeValueRequest {
-                starting_handle,
-                ending_handle,
-                uuid,
-                value,
-            } => {
+            AttPdu::FindByTypeValueRequest(m0) => {
                 bytes.pack::<u8>(&0x06)?;
-                bytes.pack(starting_handle)?;
-                bytes.pack(ending_handle)?;
-                bytes.pack(uuid)?;
-                bytes.pack(value)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttFindByTypeValueResponse { handles_information } => {
+            AttPdu::FindByTypeValueResponse(m0) => {
                 bytes.pack::<u8>(&0x07)?;
-                bytes.pack(handles_information)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttReadByTypeRequest { starting_handle, ending_handle, uuid } => {
+            AttPdu::ReadByTypeRequest(m0) => {
                 bytes.pack::<u8>(&0x08)?;
-                bytes.pack(starting_handle)?;
-                bytes.pack(ending_handle)?;
-                bytes.pack(uuid)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttReadByTypeResponse { pair_length, values } => {
+            AttPdu::ReadByTypeResponse(m0) => {
                 bytes.pack::<u8>(&0x09)?;
-                bytes.pack(pair_length)?;
-                bytes.pack(values)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttReadRequest { handle } => {
+            AttPdu::ReadRequest(m0) => {
                 bytes.pack::<u8>(&0x0A)?;
-                bytes.pack(handle)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttReadResponse { value } => {
+            AttPdu::ReadResponse(m0) => {
                 bytes.pack::<u8>(&0x0B)?;
-                bytes.pack(value)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttExecuteWriteRequest { flags } => {
+            AttPdu::ExecuteWriteRequest(m0) => {
                 bytes.pack::<u8>(&0x18)?;
-                bytes.pack(flags)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttExecuteWriteResponse => {
+            AttPdu::ExecuteWriteResponse => {
                 bytes.pack::<u8>(&0x19)?;
             }
-            AttPdu::AttHandleValueNotification { handle, value } => {
+            AttPdu::HandleValueNotification(m0) => {
                 bytes.pack::<u8>(&0x1B)?;
-                bytes.pack(handle)?;
-                bytes.pack(value)?;
+                bytes.pack(m0)?;
             }
-            AttPdu::AttUnknown(m0, m1) => {
+            AttPdu::Unknown(m0, m1) => {
                 bytes.pack(m0)?;
                 bytes.pack(m1)?;
             }
@@ -258,73 +506,45 @@ impl FromToPacket for AttPdu {
 impl PacketIdentifier<u8> for AttPdu {
     fn get_id(&self) -> u8 {
         match self {
-            AttPdu::AttExchangeMtuRequest { mtu } => 0x02,
-            AttPdu::AttExchangeMtuResponse { mtu } => 0x03,
-            AttPdu::AttFindInformationRequest { starting_handle, ending_handle } => 0x04,
-            AttPdu::AttFindInformationResponse { format, information } => 0x05,
-            AttPdu::AttFindByTypeValueRequest {
-                starting_handle,
-                ending_handle,
-                uuid,
-                value,
-            } => 0x06,
-            AttPdu::AttFindByTypeValueResponse { handles_information } => 0x07,
-            AttPdu::AttReadByTypeRequest { starting_handle, ending_handle, uuid } => 0x08,
-            AttPdu::AttReadByTypeResponse { pair_length, values } => 0x09,
-            AttPdu::AttReadRequest { handle } => 0x0A,
-            AttPdu::AttReadResponse { value } => 0x0B,
-            AttPdu::AttExecuteWriteRequest { flags } => 0x18,
-            AttPdu::AttExecuteWriteResponse => 0x19,
-            AttPdu::AttHandleValueNotification { handle, value } => 0x1B,
-            AttPdu::AttUnknown(m0, m1) => m0.clone(),
+            AttPdu::ExchangeMtuRequest(m0) => 0x02,
+            AttPdu::ExchangeMtuResponse(m0) => 0x03,
+            AttPdu::FindInformationRequest(m0) => 0x04,
+            AttPdu::FindInformationResponse(m0) => 0x05,
+            AttPdu::FindByTypeValueRequest(m0) => 0x06,
+            AttPdu::FindByTypeValueResponse(m0) => 0x07,
+            AttPdu::ReadByTypeRequest(m0) => 0x08,
+            AttPdu::ReadByTypeResponse(m0) => 0x09,
+            AttPdu::ReadRequest(m0) => 0x0A,
+            AttPdu::ReadResponse(m0) => 0x0B,
+            AttPdu::ExecuteWriteRequest(m0) => 0x18,
+            AttPdu::ExecuteWriteResponse => 0x19,
+            AttPdu::HandleValueNotification(m0) => 0x1B,
+            AttPdu::Unknown(m0, m1) => m0.clone(),
         }
     }
 }
 impl FromToPacket for SmpPdu {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         if bytes.next_if_eq::<u8>(&0x01) {
-            return Ok(SmpPdu::SmpPairingRequest {
-                io_capability: bytes.unpack()?,
-                oob_data_flag: bytes.unpack()?,
-                authentication_requirements: bytes.unpack()?,
-                max_encryption_key_size: bytes.unpack()?,
-                initiator_key_distribution: bytes.unpack()?,
-                responder_key_distribution: bytes.unpack()?,
-            });
+            return Ok(SmpPdu::PairingRequest(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x02) {
-            return Ok(SmpPdu::SmpPairingResponse {
-                io_capability: bytes.unpack()?,
-                oob_data_flag: bytes.unpack()?,
-                authentication_requirements: bytes.unpack()?,
-                max_encryption_key_size: bytes.unpack()?,
-                initiator_key_distribution: bytes.unpack()?,
-                responder_key_distribution: bytes.unpack()?,
-            });
+            return Ok(SmpPdu::PairingResponse(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x03) {
-            return Ok(SmpPdu::SmpPairingConfirmation {
-                confirm_value: bytes.unpack()?,
-            });
+            return Ok(SmpPdu::PairingConfirmation(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x04) {
-            return Ok(SmpPdu::SmpPairingRandom {
-                random_value: bytes.unpack()?,
-            });
+            return Ok(SmpPdu::PairingRandom(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x05) {
-            return Ok(SmpPdu::SmpPairingFailed(bytes.unpack()?));
+            return Ok(SmpPdu::PairingFailed(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x06) {
-            return Ok(SmpPdu::SmpEncryptionInformation {
-                long_term_key: bytes.unpack()?,
-            });
+            return Ok(SmpPdu::EncryptionInformation(bytes.unpack()?));
         }
         if bytes.next_if_eq::<u8>(&0x07) {
-            return Ok(SmpPdu::SmpCentralIdentification {
-                encrypted_diversifier: bytes.unpack()?,
-                random_number: bytes.unpack()?,
-            });
+            return Ok(SmpPdu::CentralIdentification(bytes.unpack()?));
         }
         Err(
             PacketError::Unspecified(
@@ -334,61 +554,33 @@ impl FromToPacket for SmpPdu {
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            SmpPdu::SmpPairingRequest {
-                io_capability,
-                oob_data_flag,
-                authentication_requirements,
-                max_encryption_key_size,
-                initiator_key_distribution,
-                responder_key_distribution,
-            } => {
+            SmpPdu::PairingRequest(m0) => {
                 bytes.pack::<u8>(&0x01)?;
-                bytes.pack(io_capability)?;
-                bytes.pack(oob_data_flag)?;
-                bytes.pack(authentication_requirements)?;
-                bytes.pack(max_encryption_key_size)?;
-                bytes.pack(initiator_key_distribution)?;
-                bytes.pack(responder_key_distribution)?;
+                bytes.pack(m0)?;
             }
-            SmpPdu::SmpPairingResponse {
-                io_capability,
-                oob_data_flag,
-                authentication_requirements,
-                max_encryption_key_size,
-                initiator_key_distribution,
-                responder_key_distribution,
-            } => {
+            SmpPdu::PairingResponse(m0) => {
                 bytes.pack::<u8>(&0x02)?;
-                bytes.pack(io_capability)?;
-                bytes.pack(oob_data_flag)?;
-                bytes.pack(authentication_requirements)?;
-                bytes.pack(max_encryption_key_size)?;
-                bytes.pack(initiator_key_distribution)?;
-                bytes.pack(responder_key_distribution)?;
+                bytes.pack(m0)?;
             }
-            SmpPdu::SmpPairingConfirmation { confirm_value } => {
+            SmpPdu::PairingConfirmation(m0) => {
                 bytes.pack::<u8>(&0x03)?;
-                bytes.pack(confirm_value)?;
+                bytes.pack(m0)?;
             }
-            SmpPdu::SmpPairingRandom { random_value } => {
+            SmpPdu::PairingRandom(m0) => {
                 bytes.pack::<u8>(&0x04)?;
-                bytes.pack(random_value)?;
+                bytes.pack(m0)?;
             }
-            SmpPdu::SmpPairingFailed(m0) => {
+            SmpPdu::PairingFailed(m0) => {
                 bytes.pack::<u8>(&0x05)?;
                 bytes.pack(m0)?;
             }
-            SmpPdu::SmpEncryptionInformation { long_term_key } => {
+            SmpPdu::EncryptionInformation(m0) => {
                 bytes.pack::<u8>(&0x06)?;
-                bytes.pack(long_term_key)?;
+                bytes.pack(m0)?;
             }
-            SmpPdu::SmpCentralIdentification {
-                encrypted_diversifier,
-                random_number,
-            } => {
+            SmpPdu::CentralIdentification(m0) => {
                 bytes.pack::<u8>(&0x07)?;
-                bytes.pack(encrypted_diversifier)?;
-                bytes.pack(random_number)?;
+                bytes.pack(m0)?;
             }
         };
         Ok(())
@@ -397,211 +589,409 @@ impl FromToPacket for SmpPdu {
 impl PacketIdentifier<u8> for SmpPdu {
     fn get_id(&self) -> u8 {
         match self {
-            SmpPdu::SmpPairingRequest {
-                io_capability,
-                oob_data_flag,
-                authentication_requirements,
-                max_encryption_key_size,
-                initiator_key_distribution,
-                responder_key_distribution,
-            } => 0x01,
-            SmpPdu::SmpPairingResponse {
-                io_capability,
-                oob_data_flag,
-                authentication_requirements,
-                max_encryption_key_size,
-                initiator_key_distribution,
-                responder_key_distribution,
-            } => 0x02,
-            SmpPdu::SmpPairingConfirmation { confirm_value } => 0x03,
-            SmpPdu::SmpPairingRandom { random_value } => 0x04,
-            SmpPdu::SmpPairingFailed(m0) => 0x05,
-            SmpPdu::SmpEncryptionInformation { long_term_key } => 0x06,
-            SmpPdu::SmpCentralIdentification { encrypted_diversifier, random_number } => {
-                0x07
-            }
+            SmpPdu::PairingRequest(m0) => 0x01,
+            SmpPdu::PairingResponse(m0) => 0x02,
+            SmpPdu::PairingConfirmation(m0) => 0x03,
+            SmpPdu::PairingRandom(m0) => 0x04,
+            SmpPdu::PairingFailed(m0) => 0x05,
+            SmpPdu::EncryptionInformation(m0) => 0x06,
+            SmpPdu::CentralIdentification(m0) => 0x07,
         }
     }
 }
-impl FromToPacket for HciCommand {
+impl FromToPacket for LeMeta {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0006, 0x01)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::Disconnect {
-                connection_handle: bytes.unpack()?,
-                reason: bytes.unpack()?,
-            });
+        if bytes.next_if_eq::<u8>(&0x01) {
+            return Ok(LeMeta::LeConnectionComplete(bytes.unpack()?));
         }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0003, 0x03)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::Reset);
+        if bytes.next_if_eq::<u8>(&0x02) {
+            return Ok(LeMeta::LeAdvertisingReport(bytes.unpack()?));
         }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0001, 0x03)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::SetEventMask {
-                event_mask: bytes.unpack()?,
-            });
+        if bytes.next_if_eq::<u8>(&0x03) {
+            return Ok(LeMeta::LeConnectionUpdateComplete(bytes.unpack()?));
         }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0002, 0x04)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::ReadLocalSupportedCommands);
+        if bytes.next_if_eq::<u8>(&0x04) {
+            return Ok(LeMeta::LeReadRemoteFeaturesPage0Complete(bytes.unpack()?));
         }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0009, 0x04)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::ReadBdAddr);
+        if bytes.next_if_eq::<u8>(&0x05) {
+            return Ok(LeMeta::LeLongTermKeyRequest(bytes.unpack()?));
         }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x001a, 0x03)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::WriteScanEnable(bytes.unpack()?));
+        if bytes.next_if_eq::<u8>(&0x07) {
+            return Ok(LeMeta::LeDataLengthChange(bytes.unpack()?));
         }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0016, 0x03)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::WriteConnectionAcceptTimeout(bytes.unpack()?));
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0018, 0x03)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::WritePageTimeout(bytes.unpack()?));
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0013, 0x03)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::WriteLocalName(bytes.unpack()?));
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0014, 0x03)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::ReadLocalName {
-                status: bytes.unpack()?,
-                name: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0001, 0x08)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::LeSetEventMask {
-                event_mask: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0002, 0x08)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::LeReadBufferSize);
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0005, 0x08)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::LeSetRandomAddress(bytes.unpack()?));
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0006, 0x08)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::LeSetAdvertisingParameters {
-                advertising_interval_min: bytes.unpack()?,
-                advertising_interval_max: bytes.unpack()?,
-                advertising_type: bytes.unpack()?,
-                own_address_type: bytes.unpack()?,
-                peer_address_type: bytes.unpack()?,
-                peer_address: bytes.unpack()?,
-                advertising_channel_map: bytes.unpack()?,
-                advertising_filter_policy: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0008, 0x08)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::LeSetAdvertisingData {
-                advertising_data_length: bytes.unpack()?,
-                advertising_data: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0025, 0x08)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::LeReadLocalP256PublicKey);
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x000A, 0x08)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::LeSetAdvertisingEnable(bytes.unpack()?));
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x0022, 0x08)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::LeSetDataLength {
-                connection_handle: bytes.unpack()?,
-                tx_octets: bytes.unpack()?,
-                tx_time: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<OpCode>(&OpCode(0x001A, 0x08)) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciCommand::LeLongTermKeyRequestReply {
-                connection_handle: bytes.unpack()?,
-                long_term_key: bytes.unpack()?,
-            });
+        if bytes.next_if_eq::<u8>(&0x08) {
+            return Ok(LeMeta::LeReadLocalP256PublicKeyComplete(bytes.unpack()?));
         }
         Err(
             PacketError::Unspecified(
-                format!("No matching variant found for {}", stringify!(HciCommand)),
+                format!("No matching variant found for {}", stringify!(LeMeta)),
             ),
         )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            HciCommand::Disconnect { connection_handle, reason } => {
-                bytes.pack::<OpCode>(&OpCode(0x0006, 0x01))?;
-                bytes.pack_length::<u8>()?;
+            LeMeta::LeConnectionComplete(m0) => {
+                bytes.pack::<u8>(&0x01)?;
+                bytes.pack(m0)?;
+            }
+            LeMeta::LeAdvertisingReport(m0) => {
+                bytes.pack::<u8>(&0x02)?;
+                bytes.pack(m0)?;
+            }
+            LeMeta::LeConnectionUpdateComplete(m0) => {
+                bytes.pack::<u8>(&0x03)?;
+                bytes.pack(m0)?;
+            }
+            LeMeta::LeReadRemoteFeaturesPage0Complete(m0) => {
+                bytes.pack::<u8>(&0x04)?;
+                bytes.pack(m0)?;
+            }
+            LeMeta::LeLongTermKeyRequest(m0) => {
+                bytes.pack::<u8>(&0x05)?;
+                bytes.pack(m0)?;
+            }
+            LeMeta::LeDataLengthChange(m0) => {
+                bytes.pack::<u8>(&0x07)?;
+                bytes.pack(m0)?;
+            }
+            LeMeta::LeReadLocalP256PublicKeyComplete(m0) => {
+                bytes.pack::<u8>(&0x08)?;
+                bytes.pack(m0)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl PacketIdentifier<u8> for LeMeta {
+    fn get_id(&self) -> u8 {
+        match self {
+            LeMeta::LeConnectionComplete(m0) => 0x01,
+            LeMeta::LeAdvertisingReport(m0) => 0x02,
+            LeMeta::LeConnectionUpdateComplete(m0) => 0x03,
+            LeMeta::LeReadRemoteFeaturesPage0Complete(m0) => 0x04,
+            LeMeta::LeLongTermKeyRequest(m0) => 0x05,
+            LeMeta::LeDataLengthChange(m0) => 0x07,
+            LeMeta::LeReadLocalP256PublicKeyComplete(m0) => 0x08,
+        }
+    }
+}
+impl FromToPacket for AttFindInformationRequest {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(AttFindInformationRequest {
+            starting_handle: bytes.unpack()?,
+            ending_handle: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttFindInformationRequest { starting_handle, ending_handle } => {
+                bytes.pack(starting_handle)?;
+                bytes.pack(ending_handle)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for AttFindInformationResponse {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(AttFindInformationResponse {
+            format: bytes.unpack()?,
+            information: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttFindInformationResponse { format, information } => {
+                bytes.pack(format)?;
+                bytes.pack(information)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for AttFindByTypeValueRequest {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(AttFindByTypeValueRequest {
+            starting_handle: bytes.unpack()?,
+            ending_handle: bytes.unpack()?,
+            uuid: bytes.unpack()?,
+            value: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttFindByTypeValueRequest {
+                starting_handle,
+                ending_handle,
+                uuid,
+                value,
+            } => {
+                bytes.pack(starting_handle)?;
+                bytes.pack(ending_handle)?;
+                bytes.pack(uuid)?;
+                bytes.pack(value)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for AttFindByTypeValueResponse {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(AttFindByTypeValueResponse {
+            handles_information: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttFindByTypeValueResponse { handles_information } => {
+                bytes.pack(handles_information)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for AttReadByTypeRequest {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(AttReadByTypeRequest {
+            starting_handle: bytes.unpack()?,
+            ending_handle: bytes.unpack()?,
+            uuid: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttReadByTypeRequest { starting_handle, ending_handle, uuid } => {
+                bytes.pack(starting_handle)?;
+                bytes.pack(ending_handle)?;
+                bytes.pack(uuid)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for AttReadByTypeResponse {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(AttReadByTypeResponse {
+            pair_length: bytes.unpack()?,
+            values: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttReadByTypeResponse { pair_length, values } => {
+                bytes.pack(pair_length)?;
+                bytes.pack(values)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for AttReadRequest {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(AttReadRequest {
+            handle: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttReadRequest { handle } => {
+                bytes.pack(handle)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for AttReadResponse {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(AttReadResponse {
+            value: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttReadResponse { value } => {
+                bytes.pack(value)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for AttExecuteWriteRequest {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(AttExecuteWriteRequest {
+            flags: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttExecuteWriteRequest { flags } => {
+                bytes.pack(flags)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for AttHandleValueNotification {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(AttHandleValueNotification {
+            handle: bytes.unpack()?,
+            value: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            AttHandleValueNotification { handle, value } => {
+                bytes.pack(handle)?;
+                bytes.pack(value)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for SmpPairingReqRes {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(SmpPairingReqRes {
+            io_capability: bytes.unpack()?,
+            oob_data_flag: bytes.unpack()?,
+            authentication_requirements: bytes.unpack()?,
+            max_encryption_key_size: bytes.unpack()?,
+            initiator_key_distribution: bytes.unpack()?,
+            responder_key_distribution: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            SmpPairingReqRes {
+                io_capability,
+                oob_data_flag,
+                authentication_requirements,
+                max_encryption_key_size,
+                initiator_key_distribution,
+                responder_key_distribution,
+            } => {
+                bytes.pack(io_capability)?;
+                bytes.pack(oob_data_flag)?;
+                bytes.pack(authentication_requirements)?;
+                bytes.pack(max_encryption_key_size)?;
+                bytes.pack(initiator_key_distribution)?;
+                bytes.pack(responder_key_distribution)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for SmpPairingConfirmation {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(SmpPairingConfirmation {
+            confirm_value: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            SmpPairingConfirmation { confirm_value } => {
+                bytes.pack(confirm_value)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for SmpPairingRandom {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(SmpPairingRandom {
+            random_value: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            SmpPairingRandom { random_value } => {
+                bytes.pack(random_value)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for SmpEncryptionInformation {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(SmpEncryptionInformation {
+            long_term_key: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            SmpEncryptionInformation { long_term_key } => {
+                bytes.pack(long_term_key)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for SmpCentralIdentification {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(SmpCentralIdentification {
+            encrypted_diversifier: bytes.unpack()?,
+            random_number: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            SmpCentralIdentification { encrypted_diversifier, random_number } => {
+                bytes.pack(encrypted_diversifier)?;
+                bytes.pack(random_number)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for CmdDisconnect {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(CmdDisconnect {
+            connection_handle: bytes.unpack()?,
+            reason: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            CmdDisconnect { connection_handle, reason } => {
                 bytes.pack(connection_handle)?;
                 bytes.pack(reason)?;
             }
-            HciCommand::Reset => {
-                bytes.pack::<OpCode>(&OpCode(0x0003, 0x03))?;
-                bytes.pack_length::<u8>()?;
-            }
-            HciCommand::SetEventMask { event_mask } => {
-                bytes.pack::<OpCode>(&OpCode(0x0001, 0x03))?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(event_mask)?;
-            }
-            HciCommand::ReadLocalSupportedCommands => {
-                bytes.pack::<OpCode>(&OpCode(0x0002, 0x04))?;
-                bytes.pack_length::<u8>()?;
-            }
-            HciCommand::ReadBdAddr => {
-                bytes.pack::<OpCode>(&OpCode(0x0009, 0x04))?;
-                bytes.pack_length::<u8>()?;
-            }
-            HciCommand::WriteScanEnable(m0) => {
-                bytes.pack::<OpCode>(&OpCode(0x001a, 0x03))?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(m0)?;
-            }
-            HciCommand::WriteConnectionAcceptTimeout(m0) => {
-                bytes.pack::<OpCode>(&OpCode(0x0016, 0x03))?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(m0)?;
-            }
-            HciCommand::WritePageTimeout(m0) => {
-                bytes.pack::<OpCode>(&OpCode(0x0018, 0x03))?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(m0)?;
-            }
-            HciCommand::WriteLocalName(m0) => {
-                bytes.pack::<OpCode>(&OpCode(0x0013, 0x03))?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(m0)?;
-            }
-            HciCommand::ReadLocalName { status, name } => {
-                bytes.pack::<OpCode>(&OpCode(0x0014, 0x03))?;
-                bytes.pack_length::<u8>()?;
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for CmdReadLocalName {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(CmdReadLocalName {
+            status: bytes.unpack()?,
+            name: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            CmdReadLocalName { status, name } => {
                 bytes.pack(status)?;
                 bytes.pack(name)?;
             }
-            HciCommand::LeSetEventMask { event_mask } => {
-                bytes.pack::<OpCode>(&OpCode(0x0001, 0x08))?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(event_mask)?;
-            }
-            HciCommand::LeReadBufferSize => {
-                bytes.pack::<OpCode>(&OpCode(0x0002, 0x08))?;
-                bytes.pack_length::<u8>()?;
-            }
-            HciCommand::LeSetRandomAddress(m0) => {
-                bytes.pack::<OpCode>(&OpCode(0x0005, 0x08))?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(m0)?;
-            }
-            HciCommand::LeSetAdvertisingParameters {
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for LeSetAdvertisingParameters {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(LeSetAdvertisingParameters {
+            advertising_interval_min: bytes.unpack()?,
+            advertising_interval_max: bytes.unpack()?,
+            advertising_type: bytes.unpack()?,
+            own_address_type: bytes.unpack()?,
+            peer_address_type: bytes.unpack()?,
+            peer_address: bytes.unpack()?,
+            advertising_channel_map: bytes.unpack()?,
+            advertising_filter_policy: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            LeSetAdvertisingParameters {
                 advertising_interval_min,
                 advertising_interval_max,
                 advertising_type,
@@ -611,8 +1001,6 @@ impl FromToPacket for HciCommand {
                 advertising_channel_map,
                 advertising_filter_policy,
             } => {
-                bytes.pack::<OpCode>(&OpCode(0x0006, 0x08))?;
-                bytes.pack_length::<u8>()?;
                 bytes.pack(advertising_interval_min)?;
                 bytes.pack(advertising_interval_max)?;
                 bytes.pack(advertising_type)?;
@@ -622,84 +1010,61 @@ impl FromToPacket for HciCommand {
                 bytes.pack(advertising_channel_map)?;
                 bytes.pack(advertising_filter_policy)?;
             }
-            HciCommand::LeSetAdvertisingData {
-                advertising_data_length,
-                advertising_data,
-            } => {
-                bytes.pack::<OpCode>(&OpCode(0x0008, 0x08))?;
-                bytes.pack_length::<u8>()?;
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for LeSetAdvertisingData {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(LeSetAdvertisingData {
+            advertising_data_length: bytes.unpack()?,
+            advertising_data: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            LeSetAdvertisingData { advertising_data_length, advertising_data } => {
                 bytes.pack(advertising_data_length)?;
                 bytes.pack(advertising_data)?;
-            }
-            HciCommand::LeReadLocalP256PublicKey => {
-                bytes.pack::<OpCode>(&OpCode(0x0025, 0x08))?;
-                bytes.pack_length::<u8>()?;
-            }
-            HciCommand::LeSetAdvertisingEnable(m0) => {
-                bytes.pack::<OpCode>(&OpCode(0x000A, 0x08))?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(m0)?;
-            }
-            HciCommand::LeSetDataLength { connection_handle, tx_octets, tx_time } => {
-                bytes.pack::<OpCode>(&OpCode(0x0022, 0x08))?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(connection_handle)?;
-                bytes.pack(tx_octets)?;
-                bytes.pack(tx_time)?;
-            }
-            HciCommand::LeLongTermKeyRequestReply {
-                connection_handle,
-                long_term_key,
-            } => {
-                bytes.pack::<OpCode>(&OpCode(0x001A, 0x08))?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(connection_handle)?;
-                bytes.pack(long_term_key)?;
             }
         };
         Ok(())
     }
 }
-impl PacketIdentifier<OpCode> for HciCommand {
-    fn get_id(&self) -> OpCode {
+impl FromToPacket for LeSetDataLength {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(LeSetDataLength {
+            connection_handle: bytes.unpack()?,
+            tx_octets: bytes.unpack()?,
+            tx_time: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            HciCommand::Disconnect { connection_handle, reason } => OpCode(0x0006, 0x01),
-            HciCommand::Reset => OpCode(0x0003, 0x03),
-            HciCommand::SetEventMask { event_mask } => OpCode(0x0001, 0x03),
-            HciCommand::ReadLocalSupportedCommands => OpCode(0x0002, 0x04),
-            HciCommand::ReadBdAddr => OpCode(0x0009, 0x04),
-            HciCommand::WriteScanEnable(m0) => OpCode(0x001a, 0x03),
-            HciCommand::WriteConnectionAcceptTimeout(m0) => OpCode(0x0016, 0x03),
-            HciCommand::WritePageTimeout(m0) => OpCode(0x0018, 0x03),
-            HciCommand::WriteLocalName(m0) => OpCode(0x0013, 0x03),
-            HciCommand::ReadLocalName { status, name } => OpCode(0x0014, 0x03),
-            HciCommand::LeSetEventMask { event_mask } => OpCode(0x0001, 0x08),
-            HciCommand::LeReadBufferSize => OpCode(0x0002, 0x08),
-            HciCommand::LeSetRandomAddress(m0) => OpCode(0x0005, 0x08),
-            HciCommand::LeSetAdvertisingParameters {
-                advertising_interval_min,
-                advertising_interval_max,
-                advertising_type,
-                own_address_type,
-                peer_address_type,
-                peer_address,
-                advertising_channel_map,
-                advertising_filter_policy,
-            } => OpCode(0x0006, 0x08),
-            HciCommand::LeSetAdvertisingData {
-                advertising_data_length,
-                advertising_data,
-            } => OpCode(0x0008, 0x08),
-            HciCommand::LeReadLocalP256PublicKey => OpCode(0x0025, 0x08),
-            HciCommand::LeSetAdvertisingEnable(m0) => OpCode(0x000A, 0x08),
-            HciCommand::LeSetDataLength { connection_handle, tx_octets, tx_time } => {
-                OpCode(0x0022, 0x08)
+            LeSetDataLength { connection_handle, tx_octets, tx_time } => {
+                bytes.pack(connection_handle)?;
+                bytes.pack(tx_octets)?;
+                bytes.pack(tx_time)?;
             }
-            HciCommand::LeLongTermKeyRequestReply {
-                connection_handle,
-                long_term_key,
-            } => OpCode(0x001A, 0x08),
-        }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for LeLongTermKeyRequestReply {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(LeLongTermKeyRequestReply {
+            connection_handle: bytes.unpack()?,
+            long_term_key: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            LeLongTermKeyRequestReply { connection_handle, long_term_key } => {
+                bytes.pack(connection_handle)?;
+                bytes.pack(long_term_key)?;
+            }
+        };
+        Ok(())
     }
 }
 impl FromToPacket for OpCode {
@@ -716,119 +1081,71 @@ impl FromToPacket for OpCode {
         Ok(())
     }
 }
-impl FromToPacket for ScanEnable {
+impl FromToPacket for CmdScanEnable {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
         if bytes.next_if_eq::<u8>(&0x00) {
-            return Ok(ScanEnable::NoScans);
+            return Ok(CmdScanEnable::NoScans);
         }
         if bytes.next_if_eq::<u8>(&0x01) {
-            return Ok(ScanEnable::InquiryScanEnabled_PageScanDisabled);
+            return Ok(CmdScanEnable::InquiryScanEnabled_PageScanDisabled);
         }
         if bytes.next_if_eq::<u8>(&0x02) {
-            return Ok(ScanEnable::InquiryScanDisabled_PageScanEnabled);
+            return Ok(CmdScanEnable::InquiryScanDisabled_PageScanEnabled);
         }
         if bytes.next_if_eq::<u8>(&0x03) {
-            return Ok(ScanEnable::InquiryScanEnabled_PageScanEnabled);
+            return Ok(CmdScanEnable::InquiryScanEnabled_PageScanEnabled);
         }
         Err(
             PacketError::Unspecified(
-                format!("No matching variant found for {}", stringify!(ScanEnable)),
+                format!("No matching variant found for {}", stringify!(CmdScanEnable)),
             ),
         )
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            ScanEnable::NoScans => {
+            CmdScanEnable::NoScans => {
                 bytes.pack::<u8>(&0x00)?;
             }
-            ScanEnable::InquiryScanEnabled_PageScanDisabled => {
+            CmdScanEnable::InquiryScanEnabled_PageScanDisabled => {
                 bytes.pack::<u8>(&0x01)?;
             }
-            ScanEnable::InquiryScanDisabled_PageScanEnabled => {
+            CmdScanEnable::InquiryScanDisabled_PageScanEnabled => {
                 bytes.pack::<u8>(&0x02)?;
             }
-            ScanEnable::InquiryScanEnabled_PageScanEnabled => {
+            CmdScanEnable::InquiryScanEnabled_PageScanEnabled => {
                 bytes.pack::<u8>(&0x03)?;
             }
         };
         Ok(())
     }
 }
-impl PacketIdentifier<u8> for ScanEnable {
+impl PacketIdentifier<u8> for CmdScanEnable {
     fn get_id(&self) -> u8 {
         match self {
-            ScanEnable::NoScans => 0x00,
-            ScanEnable::InquiryScanEnabled_PageScanDisabled => 0x01,
-            ScanEnable::InquiryScanDisabled_PageScanEnabled => 0x02,
-            ScanEnable::InquiryScanEnabled_PageScanEnabled => 0x03,
+            CmdScanEnable::NoScans => 0x00,
+            CmdScanEnable::InquiryScanEnabled_PageScanDisabled => 0x01,
+            CmdScanEnable::InquiryScanDisabled_PageScanEnabled => 0x02,
+            CmdScanEnable::InquiryScanEnabled_PageScanEnabled => 0x03,
         }
     }
 }
-impl FromToPacket for LeMeta {
+impl FromToPacket for LeConnectionComplete {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-        if bytes.next_if_eq::<u8>(&0x01) {
-            return Ok(LeMeta::LeConnectionComplete {
-                status: bytes.unpack()?,
-                connection_handle: bytes.unpack()?,
-                role: bytes.unpack()?,
-                peer_address_type: bytes.unpack()?,
-                peer_address: bytes.unpack()?,
-                connection_interval: bytes.unpack()?,
-                peripheral_latency: bytes.unpack()?,
-                supervision_timeout: bytes.unpack()?,
-                central_clock_accuracy: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<u8>(&0x02) {
-            return Ok(LeMeta::LeAdvertisingReport(bytes.unpack()?));
-        }
-        if bytes.next_if_eq::<u8>(&0x03) {
-            return Ok(LeMeta::LeConnectionUpdateComplete {
-                status: bytes.unpack()?,
-                connection_handle: bytes.unpack()?,
-                interval: bytes.unpack()?,
-                latency: bytes.unpack()?,
-                timeout: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<u8>(&0x04) {
-            return Ok(LeMeta::LeReadRemoteFeaturesPage0Complete {
-                status: bytes.unpack()?,
-                connection_handle: bytes.unpack()?,
-                le_features: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<u8>(&0x05) {
-            return Ok(LeMeta::LeLongTermKeyRequest {
-                connection_handle: bytes.unpack()?,
-                random_number: bytes.unpack()?,
-                encrypted_diversifier: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<u8>(&0x07) {
-            return Ok(LeMeta::LeDataLengthChange {
-                connection_handle: bytes.unpack()?,
-                max_tx_octets: bytes.unpack()?,
-                max_tx_time: bytes.unpack()?,
-                max_rx_octets: bytes.unpack()?,
-                max_rx_time: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<u8>(&0x08) {
-            return Ok(LeMeta::LeReadLocalP256PublicKeyComplete {
-                status: bytes.unpack()?,
-                public_key: bytes.unpack()?,
-            });
-        }
-        Err(
-            PacketError::Unspecified(
-                format!("No matching variant found for {}", stringify!(LeMeta)),
-            ),
-        )
+        Ok(LeConnectionComplete {
+            status: bytes.unpack()?,
+            connection_handle: bytes.unpack()?,
+            role: bytes.unpack()?,
+            peer_address_type: bytes.unpack()?,
+            peer_address: bytes.unpack()?,
+            connection_interval: bytes.unpack()?,
+            peripheral_latency: bytes.unpack()?,
+            supervision_timeout: bytes.unpack()?,
+            central_clock_accuracy: bytes.unpack()?,
+        })
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            LeMeta::LeConnectionComplete {
+            LeConnectionComplete {
                 status,
                 connection_handle,
                 role,
@@ -839,7 +1156,6 @@ impl FromToPacket for LeMeta {
                 supervision_timeout,
                 central_clock_accuracy,
             } => {
-                bytes.pack::<u8>(&0x01)?;
                 bytes.pack(status)?;
                 bytes.pack(connection_handle)?;
                 bytes.pack(role)?;
@@ -850,60 +1166,124 @@ impl FromToPacket for LeMeta {
                 bytes.pack(supervision_timeout)?;
                 bytes.pack(central_clock_accuracy)?;
             }
-            LeMeta::LeAdvertisingReport(m0) => {
-                bytes.pack::<u8>(&0x02)?;
-                bytes.pack(m0)?;
-            }
-            LeMeta::LeConnectionUpdateComplete {
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for LeConnectionUpdateComplete {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(LeConnectionUpdateComplete {
+            status: bytes.unpack()?,
+            connection_handle: bytes.unpack()?,
+            interval: bytes.unpack()?,
+            latency: bytes.unpack()?,
+            timeout: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            LeConnectionUpdateComplete {
                 status,
                 connection_handle,
                 interval,
                 latency,
                 timeout,
             } => {
-                bytes.pack::<u8>(&0x03)?;
                 bytes.pack(status)?;
                 bytes.pack(connection_handle)?;
                 bytes.pack(interval)?;
                 bytes.pack(latency)?;
                 bytes.pack(timeout)?;
             }
-            LeMeta::LeReadRemoteFeaturesPage0Complete {
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for LeReadRemoteFeaturesPage0Complete {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(LeReadRemoteFeaturesPage0Complete {
+            status: bytes.unpack()?,
+            connection_handle: bytes.unpack()?,
+            le_features: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            LeReadRemoteFeaturesPage0Complete {
                 status,
                 connection_handle,
                 le_features,
             } => {
-                bytes.pack::<u8>(&0x04)?;
                 bytes.pack(status)?;
                 bytes.pack(connection_handle)?;
                 bytes.pack(le_features)?;
             }
-            LeMeta::LeLongTermKeyRequest {
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for LeLongTermKeyRequest {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(LeLongTermKeyRequest {
+            connection_handle: bytes.unpack()?,
+            random_number: bytes.unpack()?,
+            encrypted_diversifier: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            LeLongTermKeyRequest {
                 connection_handle,
                 random_number,
                 encrypted_diversifier,
             } => {
-                bytes.pack::<u8>(&0x05)?;
                 bytes.pack(connection_handle)?;
                 bytes.pack(random_number)?;
                 bytes.pack(encrypted_diversifier)?;
             }
-            LeMeta::LeDataLengthChange {
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for LeDataLengthChange {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(LeDataLengthChange {
+            connection_handle: bytes.unpack()?,
+            max_tx_octets: bytes.unpack()?,
+            max_tx_time: bytes.unpack()?,
+            max_rx_octets: bytes.unpack()?,
+            max_rx_time: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            LeDataLengthChange {
                 connection_handle,
                 max_tx_octets,
                 max_tx_time,
                 max_rx_octets,
                 max_rx_time,
             } => {
-                bytes.pack::<u8>(&0x07)?;
                 bytes.pack(connection_handle)?;
                 bytes.pack(max_tx_octets)?;
                 bytes.pack(max_tx_time)?;
                 bytes.pack(max_rx_octets)?;
                 bytes.pack(max_rx_time)?;
             }
-            LeMeta::LeReadLocalP256PublicKeyComplete { status, public_key } => {
-                bytes.pack::<u8>(&0x08)?;
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for LeReadLocalP256PublicKeyComplete {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(LeReadLocalP256PublicKeyComplete {
+            status: bytes.unpack()?,
+            public_key: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            LeReadLocalP256PublicKeyComplete { status, public_key } => {
                 bytes.pack(status)?;
                 bytes.pack(public_key)?;
             }
@@ -911,203 +1291,110 @@ impl FromToPacket for LeMeta {
         Ok(())
     }
 }
-impl PacketIdentifier<u8> for LeMeta {
-    fn get_id(&self) -> u8 {
-        match self {
-            LeMeta::LeConnectionComplete {
-                status,
-                connection_handle,
-                role,
-                peer_address_type,
-                peer_address,
-                connection_interval,
-                peripheral_latency,
-                supervision_timeout,
-                central_clock_accuracy,
-            } => 0x01,
-            LeMeta::LeAdvertisingReport(m0) => 0x02,
-            LeMeta::LeConnectionUpdateComplete {
-                status,
-                connection_handle,
-                interval,
-                latency,
-                timeout,
-            } => 0x03,
-            LeMeta::LeReadRemoteFeaturesPage0Complete {
-                status,
-                connection_handle,
-                le_features,
-            } => 0x04,
-            LeMeta::LeLongTermKeyRequest {
-                connection_handle,
-                random_number,
-                encrypted_diversifier,
-            } => 0x05,
-            LeMeta::LeDataLengthChange {
-                connection_handle,
-                max_tx_octets,
-                max_tx_time,
-                max_rx_octets,
-                max_rx_time,
-            } => 0x07,
-            LeMeta::LeReadLocalP256PublicKeyComplete { status, public_key } => 0x08,
-        }
-    }
-}
-impl FromToPacket for HciEvent {
+impl FromToPacket for EvtDisconnectComplete {
     fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
-        if bytes.next_if_eq::<u8>(&0x05) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciEvent::DisconnectComplete {
-                status: bytes.unpack()?,
-                connection_handle: bytes.unpack()?,
-                reason: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<u8>(&0x08) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciEvent::EncryptionChange {
-                status: bytes.unpack()?,
-                connection_handle: bytes.unpack()?,
-                encryption_enabled: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<u8>(&0x13) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciEvent::NumberOfCompletedPackets {
-                num_hci_command_packets: bytes.unpack()?,
-                connection_handle: bytes.unpack()?,
-                num_completed_packets: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<u8>(&0x3e) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciEvent::LeMeta(bytes.unpack()?));
-        }
-        if bytes.next_if_eq::<u8>(&0x0E) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciEvent::CommandComplete {
-                num_hci_command_packets: bytes.unpack()?,
-                command_opcode: bytes.unpack()?,
-                status: bytes.unpack()?,
-                data: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<u8>(&0x0F) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciEvent::CommandStatus {
-                status: bytes.unpack()?,
-                num_hci_command_packets: bytes.unpack()?,
-                command_opcode: bytes.unpack()?,
-            });
-        }
-        if bytes.next_if_eq::<u8>(&0xFF) {
-            bytes.unpack_length::<u8>()?;
-            return Ok(HciEvent::VendorSpecific(bytes.unpack()?));
-        }
-        Err(
-            PacketError::Unspecified(
-                format!("No matching variant found for {}", stringify!(HciEvent)),
-            ),
-        )
+        Ok(EvtDisconnectComplete {
+            status: bytes.unpack()?,
+            connection_handle: bytes.unpack()?,
+            reason: bytes.unpack()?,
+        })
     }
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            HciEvent::DisconnectComplete { status, connection_handle, reason } => {
-                bytes.pack::<u8>(&0x05)?;
-                bytes.pack_length::<u8>()?;
+            EvtDisconnectComplete { status, connection_handle, reason } => {
                 bytes.pack(status)?;
                 bytes.pack(connection_handle)?;
                 bytes.pack(reason)?;
-            }
-            HciEvent::EncryptionChange {
-                status,
-                connection_handle,
-                encryption_enabled,
-            } => {
-                bytes.pack::<u8>(&0x08)?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(status)?;
-                bytes.pack(connection_handle)?;
-                bytes.pack(encryption_enabled)?;
-            }
-            HciEvent::NumberOfCompletedPackets {
-                num_hci_command_packets,
-                connection_handle,
-                num_completed_packets,
-            } => {
-                bytes.pack::<u8>(&0x13)?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(num_hci_command_packets)?;
-                bytes.pack(connection_handle)?;
-                bytes.pack(num_completed_packets)?;
-            }
-            HciEvent::LeMeta(m0) => {
-                bytes.pack::<u8>(&0x3e)?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(m0)?;
-            }
-            HciEvent::CommandComplete {
-                num_hci_command_packets,
-                command_opcode,
-                status,
-                data,
-            } => {
-                bytes.pack::<u8>(&0x0E)?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(num_hci_command_packets)?;
-                bytes.pack(command_opcode)?;
-                bytes.pack(status)?;
-                bytes.pack(data)?;
-            }
-            HciEvent::CommandStatus {
-                status,
-                num_hci_command_packets,
-                command_opcode,
-            } => {
-                bytes.pack::<u8>(&0x0F)?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(status)?;
-                bytes.pack(num_hci_command_packets)?;
-                bytes.pack(command_opcode)?;
-            }
-            HciEvent::VendorSpecific(m0) => {
-                bytes.pack::<u8>(&0xFF)?;
-                bytes.pack_length::<u8>()?;
-                bytes.pack(m0)?;
             }
         };
         Ok(())
     }
 }
-impl PacketIdentifier<u8> for HciEvent {
-    fn get_id(&self) -> u8 {
+impl FromToPacket for EvtEncryptionChange {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(EvtEncryptionChange {
+            status: bytes.unpack()?,
+            connection_handle: bytes.unpack()?,
+            encryption_enabled: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
         match self {
-            HciEvent::DisconnectComplete { status, connection_handle, reason } => 0x05,
-            HciEvent::EncryptionChange {
-                status,
-                connection_handle,
-                encryption_enabled,
-            } => 0x08,
-            HciEvent::NumberOfCompletedPackets {
+            EvtEncryptionChange { status, connection_handle, encryption_enabled } => {
+                bytes.pack(status)?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(encryption_enabled)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for EvtNumberOfCompletedPackets {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(EvtNumberOfCompletedPackets {
+            num_hci_command_packets: bytes.unpack()?,
+            connection_handle: bytes.unpack()?,
+            num_completed_packets: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            EvtNumberOfCompletedPackets {
                 num_hci_command_packets,
                 connection_handle,
                 num_completed_packets,
-            } => 0x13,
-            HciEvent::LeMeta(m0) => 0x3e,
-            HciEvent::CommandComplete {
+            } => {
+                bytes.pack(num_hci_command_packets)?;
+                bytes.pack(connection_handle)?;
+                bytes.pack(num_completed_packets)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for EvtCommandComplete {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(EvtCommandComplete {
+            num_hci_command_packets: bytes.unpack()?,
+            command_opcode: bytes.unpack()?,
+            status: bytes.unpack()?,
+            data: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            EvtCommandComplete {
                 num_hci_command_packets,
                 command_opcode,
                 status,
                 data,
-            } => 0x0E,
-            HciEvent::CommandStatus {
-                status,
-                num_hci_command_packets,
-                command_opcode,
-            } => 0x0F,
-            HciEvent::VendorSpecific(m0) => 0xFF,
-        }
+            } => {
+                bytes.pack(num_hci_command_packets)?;
+                bytes.pack(command_opcode)?;
+                bytes.pack(status)?;
+                bytes.pack(data)?;
+            }
+        };
+        Ok(())
+    }
+}
+impl FromToPacket for EvtCommandStatus {
+    fn from_packet(bytes: &mut Packet) -> Result<Self, PacketError> {
+        Ok(EvtCommandStatus {
+            status: bytes.unpack()?,
+            num_hci_command_packets: bytes.unpack()?,
+            command_opcode: bytes.unpack()?,
+        })
+    }
+    fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError> {
+        match self {
+            EvtCommandStatus { status, num_hci_command_packets, command_opcode } => {
+                bytes.pack(status)?;
+                bytes.pack(num_hci_command_packets)?;
+                bytes.pack(command_opcode)?;
+            }
+        };
+        Ok(())
     }
 }
 impl FromToPacket for PacketBoundaryFlag {

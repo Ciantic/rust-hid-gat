@@ -1,4 +1,6 @@
 use bt_only_headers::messages::HciAcl;
+use bt_only_headers::messages::LeConnectionComplete;
+use bt_only_headers::messages::SmpPairingReqRes;
 use bt_only_headers::messages::*;
 use bt_only_headers::packer::*;
 
@@ -88,18 +90,11 @@ fn test_hci_command_set_event_mask() {
     let mut packet =
         Packet::from_slice(&[0x1, 0xc, 0x8, 0xff, 0xff, 0xfb, 0xff, 0x7, 0xf8, 0xbf, 0x3d]);
     let handle = HciCommand::from_packet(&mut packet).unwrap();
-    assert_eq!(
-        handle,
-        HciCommand::SetEventMask {
-            event_mask: 4449547670108504063
-        }
-    );
+    assert_eq!(handle, HciCommand::SetEventMask(4449547670108504063));
 
     let mut packet = Packet::new();
     packet
-        .pack(&HciCommand::SetEventMask {
-            event_mask: 4449547670108504063,
-        })
+        .pack(&HciCommand::SetEventMask(4449547670108504063))
         .unwrap();
     assert_eq!(
         packet.get_bytes(),
@@ -139,7 +134,7 @@ fn test_event() {
     let mut packet = Packet::from_slice(&DATA);
     let msg = HciEvent::from_packet(&mut packet).unwrap();
 
-    let expected = HciEvent::LeMeta(LeMeta::LeConnectionComplete {
+    let expected = HciEvent::LeMeta(LeMeta::LeConnectionComplete(LeConnectionComplete {
         status: HciStatus::Success,
         connection_handle: ConnectionHandle(0x0040),
         role: Role::Peripheral,
@@ -149,7 +144,7 @@ fn test_event() {
         peripheral_latency: 0,
         supervision_timeout: 960,
         central_clock_accuracy: ClockAccuracy::Ppm250,
-    });
+    }));
     assert_eq!(msg, expected);
 
     // Ensure it can be serialized back to the original bytes
@@ -206,7 +201,7 @@ fn test_pairing_request() {
         connection_handle: ConnectionHandle(64),
         pb: PacketBoundaryFlag::FirstFlushable,
         bc: BroadcastFlag::PointToPoint,
-        msg: L2CapMessage::Smp(SmpPdu::SmpPairingRequest {
+        msg: L2CapMessage::Smp(SmpPdu::PairingRequest(SmpPairingReqRes {
             io_capability: IOCapability::KeyboardDisplay,
             oob_data_flag: OOBDataFlag::OobNotAvailable,
             authentication_requirements: AuthenticationRequirements {
@@ -232,7 +227,7 @@ fn test_pairing_request() {
                 link_key: true,
                 _reserved: 0,
             },
-        }),
+        })),
     });
     assert_eq!(res_msg.as_ref(), Ok(&msg));
 

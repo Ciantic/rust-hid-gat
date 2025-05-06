@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use bt_only_headers::messages::*;
+use bt_only_headers::messages::{EvtCommandComplete, LeConnectionComplete, *};
 use bt_only_headers::packer::{FromToPacket, PacketIdentifier};
 
 #[derive(Debug, Clone)]
@@ -33,18 +33,20 @@ impl MockSocket {
         if let H4Packet::Command(cmd) = packet {
             let cmd_id = cmd.get_id();
             self.outputs
-                .push_back(H4Packet::Event(HciEvent::CommandComplete {
-                    num_hci_command_packets: 1,
-                    command_opcode: cmd_id,
-                    status: HciStatus::Success,
-                    data: vec![],
-                }));
+                .push_back(H4Packet::Event(HciEvent::CommandComplete(
+                    EvtCommandComplete {
+                        num_hci_command_packets: 1,
+                        command_opcode: cmd_id,
+                        status: HciStatus::Success,
+                        data: vec![],
+                    },
+                )));
         }
 
         // Mock client connection after advertising enable
         if let H4Packet::Command(HciCommand::LeSetAdvertisingEnable(true)) = packet {
             self.outputs.push_back(H4Packet::Event(HciEvent::LeMeta(
-                LeMeta::LeConnectionComplete {
+                LeMeta::LeConnectionComplete(LeConnectionComplete {
                     status: HciStatus::Success,
                     connection_handle: ConnectionHandle(0x0040),
                     role: Role::Central,
@@ -54,7 +56,7 @@ impl MockSocket {
                     peripheral_latency: 0,
                     supervision_timeout: 960,
                     central_clock_accuracy: ClockAccuracy::Ppm250,
-                },
+                }),
             )));
         }
     }
