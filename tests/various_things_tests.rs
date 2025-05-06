@@ -134,7 +134,7 @@ fn test_event() {
     let mut packet = Packet::from_slice(&DATA);
     let msg = HciEvent::from_packet(&mut packet).unwrap();
 
-    let expected = HciEvent::LeMeta(LeMeta::LeConnectionComplete(LeConnectionComplete {
+    let expected = HciEvent::LeMeta(EvtLeMeta::LeConnectionComplete(LeConnectionComplete {
         status: HciStatus::Success,
         connection_handle: ConnectionHandle(0x0040),
         role: Role::Peripheral,

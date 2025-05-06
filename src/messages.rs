@@ -87,7 +87,7 @@ pub enum HciEvent {
     NumberOfCompletedPackets(EvtNumberOfCompletedPackets),
 
     /// id = 0x3e
-    LeMeta(LeMeta),
+    LeMeta(EvtLeMeta),
 
     /// id = 0x0E
     CommandComplete(EvtCommandComplete),
@@ -208,7 +208,7 @@ pub enum SmpPdu {
 
 /// id_type = u8
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LeMeta {
+pub enum EvtLeMeta {
     /// id = 0x01
     LeConnectionComplete(LeConnectionComplete),
 
@@ -539,10 +539,10 @@ pub enum ClockAccuracy {
     Ppm20 = 7,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, PartialOrd, Ord, Hash)]
 pub struct ConnectionHandle(pub u16); // max value 0x0EFF
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, PartialOrd, Ord, Hash)]
 pub struct BdAddr(pub [u8; 6]);
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

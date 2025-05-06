@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     io::{BufReader, BufWriter},
 };
 
@@ -32,27 +32,25 @@ struct HciManager {
     inbox: VecDeque<H4Packet>,
     socket: Box<dyn Socket>,
     allowed_hci_command_packets: u8,
+    unpaired_connections: BTreeSet<ConnectionHandle>,
+    paired_connections: BTreeSet<ConnectionHandle>,
 }
 
 impl HciManager {
     fn process_event(&mut self, event: &HciEvent) -> Result<(), HciError> {
         use HciEvent::*;
         match event {
-            CommandComplete(CommandComplete {
-                num_hci_command_packets,
-                command_opcode,
-                status,
-                data,
-            }) => {
-                self.allowed_hci_command_packets = *num_hci_command_packets;
+            CommandComplete(e) => {
+                self.allowed_hci_command_packets = e.num_hci_command_packets;
             }
 
-            CommandStatus(CommandStatus {
-                num_hci_command_packets,
-                command_opcode,
-                status,
-            }) => {
-                self.allowed_hci_command_packets = *num_hci_command_packets;
+            CommandStatus(e) => {
+                self.allowed_hci_command_packets = e.num_hci_command_packets;
+            }
+            LeMeta(EvtLeMeta::LeConnectionComplete(e)) => {
+                println!("LE Connection Complete: {:?}", e);
+                self.unpaired_connections
+                    .insert(e.connection_handle.clone());
             }
             _ => {}
         }
@@ -124,7 +122,7 @@ fn initialize_bluetooth() -> VecDeque<H4Packet> {
         (HciCommand::WriteLocalName(FixedSizeUtf8::new("My Pi"))),
         (HciCommand::LeSetRandomAddress(BdAddr([0xa9, 0x36, 0x3c, 0xde, 0x52, 0xd7]))),
         // (HciCommand::LeReadLocalP256PublicKey),
-        (HciCommand::LeSetAdvertisingParameters {
+        (HciCommand::LeSetAdvertisingParameters(LeSetAdvertisingParameters {
             advertising_interval_min: 512,
             advertising_interval_max: 512,
             advertising_type: 0x00,
@@ -133,14 +131,14 @@ fn initialize_bluetooth() -> VecDeque<H4Packet> {
             peer_address: BdAddr([0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
             advertising_channel_map: 0x07,
             advertising_filter_policy: 0x00,
-        }),
-        (HciCommand::LeSetAdvertisingData {
+        })),
+        (HciCommand::LeSetAdvertisingData(LeSetAdvertisingData {
             advertising_data_length: 16,
             advertising_data: [
                 0x2, 0x1, 0x6, 0x3, 0x19, 0xc1, 0x3, 0x4, 0x8, 0x48, 0x49, 0x44, 0x3, 0x2, 0x12,
                 0x18, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
             ],
-        }),
+        })),
         (HciCommand::LeSetAdvertisingEnable(true)),
     ]
     .iter()

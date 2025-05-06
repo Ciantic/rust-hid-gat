@@ -46,7 +46,7 @@ impl MockSocket {
         // Mock client connection after advertising enable
         if let H4Packet::Command(HciCommand::LeSetAdvertisingEnable(true)) = packet {
             self.outputs.push_back(H4Packet::Event(HciEvent::LeMeta(
-                LeMeta::LeConnectionComplete(LeConnectionComplete {
+                EvtLeMeta::LeConnectionComplete(LeConnectionComplete {
                     status: HciStatus::Success,
                     connection_handle: ConnectionHandle(0x0040),
                     role: Role::Central,
