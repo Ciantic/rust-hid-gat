@@ -1,6 +1,6 @@
 {
     "editor.formatOnSave": true,
-    "triggerTaskOnSave.tasks": {
+    "__triggerTaskOnSave.tasks": {
         "rsync": ["**/*.*"]
     }
 }

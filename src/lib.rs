@@ -1,12 +1,12 @@
 use gatt::*;
 
-mod c1;
+pub mod c1;
 // mod controller;
 mod gatt;
-// mod parrot
 pub mod messages;
 pub mod messages_impl;
 pub mod packer;
+// mod parrot;
 
 fn build_hid_db() -> AttributeDatabase {
     let mut db = AttributeDatabase::new();

@@ -258,6 +258,44 @@ fn test_pairing_request_2() {
 }
 
 #[test]
+fn test_pairing_request_3() {
+    let payload = SmpPairingReqRes {
+        io_capability: IOCapability::KeyboardDisplay,
+        oob_data_flag: OOBDataFlag::OobNotAvailable,
+        authentication_requirements: AuthenticationRequirements {
+            bonding: true,
+            mitm_protection: true,
+            secure_connections: true,
+            keypress_notification: false,
+            ct2: true,
+            _reserved: 0,
+        },
+        max_encryption_key_size: 16,
+        initiator_key_distribution: KeyDistributionFlags {
+            enc_key: false,
+            id_key: true,
+            sign_key: true,
+            link_key: true,
+            _reserved: 0,
+        },
+        responder_key_distribution: KeyDistributionFlags {
+            enc_key: true,
+            id_key: true,
+            sign_key: true,
+            link_key: true,
+            _reserved: 0,
+        },
+    };
+    let preq = SmpPdu::PairingRequest(payload.clone());
+    let pres = SmpPdu::PairingResponse(payload.clone());
+
+    let preq_bytes: [u8; 7] = preq.to_bytes().try_into().unwrap();
+    let pres_bytes: [u8; 7] = pres.to_bytes().try_into().unwrap();
+    assert_eq!(preq_bytes, [1, 4, 0, 45, 16, 14, 15]);
+    assert_eq!(pres_bytes, [2, 4, 0, 45, 16, 14, 15]);
+}
+
+#[test]
 fn test_complete_data() {
     let input: &[u8; 71] = &[
         0x4, 0xe, 0x44, 0x1, 0x2, 0x10, 0x0, 0xff, 0xff, 0xff, 0x3, 0xcc, 0xff, 0xef, 0xff, 0xff,

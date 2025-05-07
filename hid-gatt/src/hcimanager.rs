@@ -3,14 +3,19 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     io::{BufReader, BufWriter},
+    ops::Add,
+    os::windows::process,
 };
 
 const BLUETOOTH_BASE_UUID: &str = "00000000-0000-1000-8000-00805F9B34FB";
 
 // use crate::hciserver::DummyHciServer;
-use bt_only_headers::messages::{EvtCommandComplete, EvtCommandStatus, HciAcl, *};
-use bt_only_headers::packer::FixedSizeUtf8;
 use bt_only_headers::packer::PacketIdentifier;
+use bt_only_headers::{c1::c1_rev, packer::FixedSizeUtf8};
+use bt_only_headers::{
+    messages::{EvtCommandComplete, EvtCommandStatus, HciAcl, *},
+    packer::FromToPacket,
+};
 
 use crate::socket::{Socket, SocketError};
 
@@ -27,28 +32,35 @@ impl From<SocketError> for HciError {
     }
 }
 
-pub struct HciManager<T: Socket> {
+trait MsgProcessor {
+    fn process_acl(&mut self, packet: HciAcl) -> Result<bool, HciError>;
+    fn process_event(&mut self, packet: HciEvent) -> Result<bool, HciError>;
+}
+
+pub struct HciManager {
     outbox: VecDeque<H4Packet>,
     inbox: VecDeque<H4Packet>,
-    socket: Box<T>,
+    processors: Vec<Box<dyn MsgProcessor>>,
+    socket: Box<dyn Socket>,
     allowed_hci_command_packets: u8,
     unpaired_connections: BTreeSet<ConnectionHandle>,
     paired_connections: BTreeSet<ConnectionHandle>,
 }
 
-impl<T: Socket> HciManager<T> {
-    pub fn new(socket: T) -> Result<Self, HciError> {
-        let socket = Box::new(socket);
+impl HciManager {
+    pub fn new(socket: Box<dyn Socket>) -> Result<Self, HciError> {
         let mut outbox = initialize_bluetooth();
         let inbox = VecDeque::new();
         let allowed_hci_command_packets = 0;
         let unpaired_connections = BTreeSet::new();
         let paired_connections = BTreeSet::new();
+        let processors = Vec::new();
 
         Ok(HciManager {
             outbox,
             inbox,
             socket,
+            processors,
             allowed_hci_command_packets,
             unpaired_connections,
             paired_connections,
@@ -72,17 +84,27 @@ impl<T: Socket> HciManager<T> {
             }
             _ => {}
         }
+
+        for processor in self.processors.iter_mut() {
+            if processor.process_event(event.clone())? {
+                // return Ok(());
+            }
+        }
         Ok(())
     }
 
     fn process_acl(&mut self, acl: &HciAcl) -> Result<(), HciError> {
-        // Process the ACL data
-        println!("Received HCI ACL: {:?}", acl);
+        for processor in self.processors.iter_mut() {
+            if processor.process_acl(acl.clone())? {
+                // return Ok(());
+            }
+        }
         Ok(())
     }
 
     fn process_packet(&mut self, packet: &H4Packet) -> Result<(), HciError> {
         use H4Packet::*;
+
         match &packet {
             H4Packet::Event(event) => {
                 self.process_event(event)?;
@@ -132,24 +154,69 @@ struct AttHanlder {
 }
 
 /// Take raw connection handle and returns PairedConnection, or SmpPairingFailure
-struct SmpHandler<T: Socket> {
-    hci: HciManager<T>,
+struct ConnectionHandler {
+    server_address: BdAddr,
+    server_address_type: AddressType,
+    server_random: u128,
+    server_confirm_value: Option<u128>,
+    hci: HciManager,
     connection_handle: ConnectionHandle,
-    address: BdAddr,
-    address_type: AddressType,
+    mtu: Option<u16>,
+    max_key_size: Option<u8>,
+    preq: Option<[u8; 7]>,
+    pres: Option<[u8; 7]>,
+    peer_confirm_value: Option<u128>,
+    peer_random: Option<u128>,
+    peer_address: BdAddr,
+    peer_address_type: AddressType,
 }
 
-impl<T: Socket> SmpHandler<T> {
-    fn new(hci: HciManager<T>, connection_complete: LeConnectionComplete) -> Self {
-        SmpHandler {
-            connection_handle: connection_complete.connection_handle.clone(),
+impl ConnectionHandler {
+    fn new(
+        hci: HciManager,
+        lecon: LeConnectionComplete,
+        server_address: BdAddr,
+        server_address_type: AddressType,
+    ) -> Self {
+        ConnectionHandler {
             hci,
-            address: connection_complete.peer_address.into(),
-            address_type: connection_complete.peer_address_type.into(),
+            server_address,
+            server_address_type,
+            server_random: u128::from_le_bytes([
+                // TODO: This should be randomized at some point
+                0x6d, 0xde, 0x61, 0xf5, 0x68, 0x16, 0x96, 0x67, 0x8a, 0x5e, 0x28, 0x70, 0x1a, 0x34,
+                0x38, 0x0,
+            ]),
+            server_confirm_value: None,
+            connection_handle: lecon.connection_handle.clone(),
+            mtu: None,
+            max_key_size: None,
+            preq: None,
+            pres: None,
+            peer_confirm_value: None,
+            peer_random: None,
+            peer_address: lecon.peer_address.clone(),
+            peer_address_type: lecon.peer_address_type.clone(),
         }
     }
 
-    fn process(&self, request: H4Packet) -> Result<PairedConnection, HciError> {
+    fn send_smp(&mut self, msg: SmpPdu) -> Result<(), HciError> {
+        let acl = H4Packet::Acl(HciAcl {
+            connection_handle: self.connection_handle.clone(),
+            bc: BroadcastFlag::PointToPoint,
+            pb: PacketBoundaryFlag::FirstNonFlushable,
+            msg: L2CapMessage::Smp(msg),
+        });
+        self.hci.send(acl)?;
+        Ok(())
+    }
+}
+
+impl MsgProcessor for ConnectionHandler {
+    fn process_acl(&mut self, packet: HciAcl) -> Result<bool, HciError> {
+        if packet.connection_handle != self.connection_handle {
+            return Ok(false);
+        }
         // Copied from my parrot.rs
         //
         // 1. Wait for SmpPdu::PairingRequest
@@ -175,7 +242,121 @@ impl<T: Socket> SmpHandler<T> {
 
         // Then produce PairedConnection
 
-        Ok(PairedConnection {})
+        // 1. Wait for SmpPdu::PairingRequest
+        if let HciAcl {
+            msg: L2CapMessage::Smp(ref preq @ SmpPdu::PairingRequest(ref payload)),
+            ..
+        } = packet
+        {
+            let pres = SmpPdu::PairingResponse(SmpPairingReqRes {
+                authentication_requirements: AuthenticationRequirements {
+                    bonding: true,
+                    mitm_protection: false,
+                    secure_connections: false,
+                    keypress_notification: false,
+                    ct2: false,
+                    _reserved: 0,
+                },
+                io_capability: IOCapability::NoInputNoOutput,
+                max_encryption_key_size: 16,
+                oob_data_flag: OOBDataFlag::OobNotAvailable,
+                initiator_key_distribution: KeyDistributionFlags {
+                    enc_key: false,
+                    id_key: false,
+                    sign_key: false,
+                    link_key: false,
+                    _reserved: 0,
+                },
+                responder_key_distribution: KeyDistributionFlags {
+                    enc_key: true,
+                    id_key: false,
+                    sign_key: false,
+                    link_key: false,
+                    _reserved: 0,
+                },
+            });
+            // Store values for C1
+            self.max_key_size = Some(payload.max_encryption_key_size);
+            self.preq = Some(preq.to_bytes().try_into().unwrap());
+            self.pres = Some(pres.to_bytes().try_into().unwrap());
+
+            // 2. Send SmpPdu::PairingResponse
+            self.send_smp(pres);
+        }
+
+        // 3. Wait for SmpPdu::PairingConfirm
+        if let HciAcl {
+            msg: L2CapMessage::Smp(SmpPdu::PairingConfirmation(ref value)),
+            ..
+        } = packet
+        {
+            let server_confirm_value = u128::from_le_bytes(c1_rev(
+                &[0; 16],
+                &self.server_random.to_le_bytes(),
+                &self.pres.unwrap(),
+                &self.preq.unwrap(),
+                self.peer_address_type.to_bytes()[0],
+                &self.peer_address.to_bytes().try_into().unwrap(),
+                self.server_address_type.to_bytes()[0],
+                &self.server_address.to_bytes().try_into().unwrap(),
+            ));
+            self.peer_confirm_value = Some(value.confirm_value);
+            self.server_confirm_value = server_confirm_value.into();
+
+            // 4. Send SmpPdu::PairingConfirm
+            let pconfirm = SmpPdu::PairingConfirmation(SmpPairingConfirmation {
+                confirm_value: server_confirm_value,
+            });
+            self.send_smp(pconfirm)?;
+        }
+
+        // 5. Wait for SmpPdu::PairingRandom
+        if let HciAcl {
+            msg: L2CapMessage::Smp(SmpPdu::PairingRandom(ref value)),
+            ..
+        } = packet
+        {
+            self.peer_random = Some(value.random_value);
+            let peer_confirm_value = u128::from_le_bytes(c1_rev(
+                &[0; 16],
+                &value.random_value.to_le_bytes(),
+                &self.pres.unwrap(),
+                &self.preq.unwrap(),
+                self.peer_address_type.to_bytes()[0],
+                &self.peer_address.to_bytes().try_into().unwrap(),
+                self.server_address_type.to_bytes()[0],
+                &self.server_address.to_bytes().try_into().unwrap(),
+            ));
+
+            if self.server_confirm_value != Some(peer_confirm_value) {
+                // 6. Send SmpPdu::PairingFailed
+                let pairing_failed = SmpPdu::PairingFailed(SmpPairingFailure::ConfirmValueFailed);
+                self.send_smp(pairing_failed)?;
+                // TODO: Disconnect
+            } else {
+                // 7. Send SmpPdu::PairingRandom
+                let prandom = SmpPdu::PairingRandom(SmpPairingRandom {
+                    random_value: self.server_random,
+                });
+                self.send_smp(prandom)?;
+            }
+        }
+
+        // Check if the packet is a pairing request
+        // if let H4Packet::Acl(acl) = packet {
+        // if let Some(smp_request) = acl.get_smp_request() {
+        //     // Process the pairing request
+        //     match self.process(smp_request) {
+        //         Ok(_) => return true,
+        //         Err(_) => return false,
+        //     }
+        // }
+        // }
+        Ok(false)
+    }
+
+    fn process_event(&mut self, packet: HciEvent) -> Result<bool, HciError> {
+        Ok(false)
     }
 }
 

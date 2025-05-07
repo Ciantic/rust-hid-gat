@@ -169,6 +169,12 @@ pub trait FromToPacket {
     where
         Self: Sized;
     fn to_packet(&self, bytes: &mut Packet) -> Result<(), PacketError>;
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut packet = Packet::new();
+        self.to_packet(&mut packet).unwrap();
+        packet.get_bytes().to_vec()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
