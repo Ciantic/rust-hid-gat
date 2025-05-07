@@ -15,7 +15,7 @@ use bt_only_headers::packer::PacketIdentifier;
 use crate::socket::{Socket, SocketError};
 
 #[derive(Debug, Clone)]
-enum HciError {
+pub enum HciError {
     SocketError(SocketError),
     PacketError,
     Unknown(String),
@@ -27,16 +27,34 @@ impl From<SocketError> for HciError {
     }
 }
 
-struct HciManager {
+pub struct HciManager<T: Socket> {
     outbox: VecDeque<H4Packet>,
     inbox: VecDeque<H4Packet>,
-    socket: Box<dyn Socket>,
+    socket: Box<T>,
     allowed_hci_command_packets: u8,
     unpaired_connections: BTreeSet<ConnectionHandle>,
     paired_connections: BTreeSet<ConnectionHandle>,
 }
 
-impl HciManager {
+impl<T: Socket> HciManager<T> {
+    pub fn new(socket: T) -> Result<Self, HciError> {
+        let socket = Box::new(socket);
+        let mut outbox = initialize_bluetooth();
+        let inbox = VecDeque::new();
+        let allowed_hci_command_packets = 0;
+        let unpaired_connections = BTreeSet::new();
+        let paired_connections = BTreeSet::new();
+
+        Ok(HciManager {
+            outbox,
+            inbox,
+            socket,
+            allowed_hci_command_packets,
+            unpaired_connections,
+            paired_connections,
+        })
+    }
+
     fn process_event(&mut self, event: &HciEvent) -> Result<(), HciError> {
         use HciEvent::*;
         match event {
@@ -107,6 +125,61 @@ impl HciManager {
         Ok(())
     }
 }
+
+struct AttHanlder {
+    connection: ConnectionHandle,
+    mtu: u16,
+}
+
+/// Take raw connection handle and returns PairedConnection, or SmpPairingFailure
+struct SmpHandler<T: Socket> {
+    hci: HciManager<T>,
+    connection_handle: ConnectionHandle,
+    address: BdAddr,
+    address_type: AddressType,
+}
+
+impl<T: Socket> SmpHandler<T> {
+    fn new(hci: HciManager<T>, connection_complete: LeConnectionComplete) -> Self {
+        SmpHandler {
+            connection_handle: connection_complete.connection_handle.clone(),
+            hci,
+            address: connection_complete.peer_address.into(),
+            address_type: connection_complete.peer_address_type.into(),
+        }
+    }
+
+    fn process(&self, request: H4Packet) -> Result<PairedConnection, HciError> {
+        // Copied from my parrot.rs
+        //
+        // 1. Wait for SmpPdu::PairingRequest
+        // 2. Send SmpPdu::PairingResponse
+        // 3. Wait for SmpPdu::PairingConfirm
+        // 4. Send SmpPdu::PairingConfirm
+        // 5. Wait for SmpPdu::PairingRandom
+        // 6. Send SmpPdu::PairingRandom or SmpPdu::PairingFailed
+        // 7. Wait for LeLongTermKeyRequest
+        // 8. Send LeLongTermKeyRequestReply or LeLongTermKeyRequestNegativeReply
+        // 9. Wait for HciEvent::EncryptionChange
+        // 10. Send SmpEncryptionInformation
+        // 11. Send SmpCentralIdentification
+
+        // let a: SmpPdu::PairingRequest = SmpPdu::PairingRequest(SmpPairingReqRes {
+        //     authentication_requirements: AuthenticationRequirements::default(),
+        //     io_capability: IOCapability::DisplayOnly,
+        //     initiator_key_distribution: KeyDistributionFlags::default(),
+        //     max_encryption_key_size: 0x10,
+        //     responder_key_distribution: KeyDistributionFlags::default(),
+        //     oob_data_flag: OOBDataFlag::OobAvailable,
+        // });
+
+        // Then produce PairedConnection
+
+        Ok(PairedConnection {})
+    }
+}
+
+struct PairedConnection {}
 
 fn initialize_bluetooth() -> VecDeque<H4Packet> {
     vec![
