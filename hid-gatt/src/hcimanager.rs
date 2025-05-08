@@ -1,10 +1,12 @@
 #![allow(unused)]
 
 use std::{
+    cell::RefCell,
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     io::{BufReader, BufWriter},
     ops::Add,
     os::windows::process,
+    rc::{Rc, Weak},
 };
 
 const BLUETOOTH_BASE_UUID: &str = "00000000-0000-1000-8000-00805F9B34FB";
@@ -79,8 +81,12 @@ impl HciManager {
             }
             LeMeta(EvtLeMeta::LeConnectionComplete(e)) => {
                 println!("LE Connection Complete: {:?}", e);
-                self.unpaired_connections
-                    .insert(e.connection_handle.clone());
+                self.processors.push(Box::new(ConnectionHandler::new(
+                    todo!(),
+                    e.clone(),
+                    BdAddr([0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+                    AddressType::Public,
+                )));
             }
             _ => {}
         }
@@ -159,7 +165,9 @@ struct ConnectionHandler {
     server_address_type: AddressType,
     server_random: u128,
     server_confirm_value: Option<u128>,
-    hci: HciManager,
+    server_long_term_key: u128,
+    server_cid_random: u64,
+    hci: Weak<RefCell<HciManager>>,
     connection_handle: ConnectionHandle,
     mtu: Option<u16>,
     max_key_size: Option<u8>,
@@ -171,9 +179,9 @@ struct ConnectionHandler {
     peer_address_type: AddressType,
 }
 
-impl ConnectionHandler {
+impl<'a> ConnectionHandler {
     fn new(
-        hci: HciManager,
+        hci: Weak<RefCell<HciManager>>,
         lecon: LeConnectionComplete,
         server_address: BdAddr,
         server_address_type: AddressType,
@@ -188,6 +196,8 @@ impl ConnectionHandler {
                 0x38, 0x0,
             ]),
             server_confirm_value: None,
+            server_long_term_key: 0xe906ea2ad9e76155e955033d694bbcfa,
+            server_cid_random: u64::from_le_bytes([0x50, 0xc2, 0xe8, 0xd6, 0xe, 0x26, 0x9, 0xa]),
             connection_handle: lecon.connection_handle.clone(),
             mtu: None,
             max_key_size: None,
@@ -207,40 +217,47 @@ impl ConnectionHandler {
             pb: PacketBoundaryFlag::FirstNonFlushable,
             msg: L2CapMessage::Smp(msg),
         });
-        self.hci.send(acl)?;
+        if let Some(ptr) = self.hci.upgrade() {
+            let mut hci = ptr.borrow_mut();
+            hci.send(acl)?;
+        } else {
+            return Err(HciError::Unknown("HCI Manager is gone".to_string()));
+        }
+        Ok(())
+    }
+
+    fn send_cmd(&mut self, cmd: HciCommand) -> Result<(), HciError> {
+        let packet = H4Packet::Command(cmd);
+        if let Some(ptr) = self.hci.upgrade() {
+            let mut hci = ptr.borrow_mut();
+            hci.send(packet)?;
+        } else {
+            return Err(HciError::Unknown("HCI Manager is gone".to_string()));
+        }
         Ok(())
     }
 }
 
+// Copied from my parrot.rs
+//
+// 1. Wait for SmpPdu::PairingRequest
+// 2. Send SmpPdu::PairingResponse
+// 3. Wait for SmpPdu::PairingConfirm
+// 4. Send SmpPdu::PairingConfirm
+// 5. Wait for SmpPdu::PairingRandom
+// 6. Send SmpPdu::PairingRandom or SmpPdu::PairingFailed
+// 7. Wait for LeLongTermKeyRequest
+// 8. Send LeLongTermKeyRequestReply or LeLongTermKeyRequestNegativeReply
+// 9. Wait for HciEvent::EncryptionChange
+// 10. Send SmpEncryptionInformation
+// 11. Send SmpCentralIdentification
+
 impl MsgProcessor for ConnectionHandler {
     fn process_acl(&mut self, packet: HciAcl) -> Result<bool, HciError> {
+        // Check if the packet is for this connection
         if packet.connection_handle != self.connection_handle {
             return Ok(false);
         }
-        // Copied from my parrot.rs
-        //
-        // 1. Wait for SmpPdu::PairingRequest
-        // 2. Send SmpPdu::PairingResponse
-        // 3. Wait for SmpPdu::PairingConfirm
-        // 4. Send SmpPdu::PairingConfirm
-        // 5. Wait for SmpPdu::PairingRandom
-        // 6. Send SmpPdu::PairingRandom or SmpPdu::PairingFailed
-        // 7. Wait for LeLongTermKeyRequest
-        // 8. Send LeLongTermKeyRequestReply or LeLongTermKeyRequestNegativeReply
-        // 9. Wait for HciEvent::EncryptionChange
-        // 10. Send SmpEncryptionInformation
-        // 11. Send SmpCentralIdentification
-
-        // let a: SmpPdu::PairingRequest = SmpPdu::PairingRequest(SmpPairingReqRes {
-        //     authentication_requirements: AuthenticationRequirements::default(),
-        //     io_capability: IOCapability::DisplayOnly,
-        //     initiator_key_distribution: KeyDistributionFlags::default(),
-        //     max_encryption_key_size: 0x10,
-        //     responder_key_distribution: KeyDistributionFlags::default(),
-        //     oob_data_flag: OOBDataFlag::OobAvailable,
-        // });
-
-        // Then produce PairedConnection
 
         // 1. Wait for SmpPdu::PairingRequest
         if let HciAcl {
@@ -334,7 +351,7 @@ impl MsgProcessor for ConnectionHandler {
                 self.send_smp(pairing_failed)?;
                 // TODO: Disconnect
             } else {
-                // 7. Send SmpPdu::PairingRandom
+                // 6. Send SmpPdu::PairingRandom
                 let prandom = SmpPdu::PairingRandom(SmpPairingRandom {
                     random_value: self.server_random,
                 });
@@ -356,6 +373,36 @@ impl MsgProcessor for ConnectionHandler {
     }
 
     fn process_event(&mut self, packet: HciEvent) -> Result<bool, HciError> {
+        if let HciEvent::LeMeta(EvtLeMeta::LeLongTermKeyRequest(e)) = packet {
+            // Check if the packet is for this connection
+            if e.connection_handle != self.connection_handle {
+                return Ok(false);
+            }
+
+            // TODO: or LeLongTermKeyRequestNegativeReply
+            let reply = HciCommand::LeLongTermKeyRequestReply(LeLongTermKeyRequestReply {
+                connection_handle: e.connection_handle,
+                long_term_key: 0xe906ea2ad9e76155e955033d694bbcfa,
+            });
+            self.send_cmd(reply)?;
+            return Ok(true);
+        }
+
+        if let HciEvent::EncryptionChange(e) = packet {
+            // Check if the packet is for this connection
+            if e.connection_handle != self.connection_handle {
+                return Ok(false);
+            }
+
+            self.send_smp(SmpPdu::EncryptionInformation(SmpEncryptionInformation {
+                long_term_key: self.server_long_term_key,
+            }))?;
+
+            self.send_smp(SmpPdu::CentralIdentification(SmpCentralIdentification {
+                random_number: self.server_cid_random,
+                encrypted_diversifier: 0x0000,
+            }))?;
+        }
         Ok(false)
     }
 }
