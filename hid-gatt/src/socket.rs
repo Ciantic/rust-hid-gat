@@ -64,10 +64,12 @@ impl MockSocket {
 
 impl Socket for MockSocket {
     fn read(&mut self) -> Result<Option<H4Packet>, SocketError> {
+        println!("< {:?}", self.inputs.front());
         Ok(self.outputs.pop_front())
     }
 
     fn write(&mut self, packet: H4Packet) -> Result<(), SocketError> {
+        println!("> {:?}", packet);
         self.mock_response(&packet);
         self.inputs.push_back(packet);
         Ok(())
