@@ -1,5 +1,7 @@
+use bt_only_headers::hcimanager::HciManager;
 use bt_only_headers::messages::*;
 use bt_only_headers::packer::*;
+use bt_only_headers::socket::MockSocket;
 
 fn parse_hci_dump(dump: String) -> Vec<(bool, Vec<u8>)> {
     // Parse the HCI dump like this:
@@ -138,5 +140,72 @@ fn test_parsing3() {
         let mut test_packer = Packet::new();
         test_packer.pack::<H4Packet>(&packet).unwrap();
         assert_eq!(test_packer.get_bytes(), &bytes);
+    }
+}
+
+#[test]
+fn test_hcimanager() {
+    let data = parse_hci_dump_from_file("tests/hcidump-03.txt");
+    let mut socket = Box::new(MockSocket::new(data.into()));
+    let init_bluetooth = vec![
+        (HciCommand::Reset),
+        (HciCommand::SetEventMask(0x3DBFF807FFFBFFFF)),
+        (HciCommand::LeSetEventMask(0x00000000000005ff)),
+        (HciCommand::WriteScanEnable(CmdScanEnable::InquiryScanEnabled_PageScanEnabled)),
+        (HciCommand::WriteConnectionAcceptTimeout(16288)),
+        (HciCommand::WritePageTimeout(16384)),
+        (HciCommand::ReadLocalSupportedCommands),
+        (HciCommand::ReadBdAddr),
+        (HciCommand::LeReadBufferSize),
+        (HciCommand::WriteLocalName(FixedSizeUtf8::new("My Pi"))),
+        (HciCommand::LeSetRandomAddress(BdAddr([137, 146, 48, 216, 52, 243]))),
+        // (HciCommand::LeReadLocalP256PublicKey),
+        (HciCommand::LeSetAdvertisingParameters(LeSetAdvertisingParameters {
+            advertising_interval_min: 512,
+            advertising_interval_max: 512,
+            advertising_type: 0x00,
+            own_address_type: 0x01,
+            peer_address_type: 0x00,
+            peer_address: BdAddr([0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            advertising_channel_map: 0x07,
+            advertising_filter_policy: 0x00,
+        })),
+        (HciCommand::LeSetAdvertisingData(LeSetAdvertisingData {
+            advertising_data_length: 16,
+            advertising_data: [
+                0x2, 0x1, 0x6, 0x3, 0x19, 0xc1, 0x3, 0x4, 0x8, 0x48, 0x49, 0x44, 0x3, 0x2, 0x12,
+                0x18, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+            ],
+        })),
+        (HciCommand::LeReadLocalP256PublicKey),
+        (HciCommand::LeSetRandomAddress(BdAddr([6, 51, 116, 214, 86, 211]))),
+        (HciCommand::LeSetAdvertisingParameters(LeSetAdvertisingParameters {
+            advertising_interval_min: 512,
+            advertising_interval_max: 512,
+            advertising_type: 0x00,
+            own_address_type: 0x01,
+            peer_address_type: 0x00,
+            peer_address: BdAddr([0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            advertising_channel_map: 0x07,
+            advertising_filter_policy: 0x00,
+        })),
+        (HciCommand::LeSetAdvertisingData(LeSetAdvertisingData {
+            advertising_data_length: 16,
+            advertising_data: [
+                0x2, 0x1, 0x6, 0x3, 0x19, 0xc1, 0x3, 0x4, 0x8, 0x48, 0x49, 0x44, 0x3, 0x2, 0x12,
+                0x18, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+            ],
+        })),
+        (HciCommand::LeSetAdvertisingEnable(true)),
+    ]
+    .iter()
+    .map(|f| H4Packet::Command(f.clone()))
+    .collect::<Vec<H4Packet>>();
+
+    let mut mgr = HciManager::new(init_bluetooth.into(), socket).unwrap();
+
+    for i in 0..100 {
+        mgr.execute().unwrap();
+        mgr.process().unwrap();
     }
 }

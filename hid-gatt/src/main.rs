@@ -7,13 +7,12 @@ use std::{
     rc::{Rc, Weak},
 };
 
-pub mod hcimanager;
-pub mod pairinghandler;
-pub mod socket;
+use bt_only_headers::{hcimanager, messages::H4Packet, socket};
 
 fn main() {
-    let mut socket = Box::new(socket::MockSocket::new());
-    let mut mgr = hcimanager::HciManager::new(socket).unwrap();
+    let mut socket = Box::new(socket::MockSocket::new(VecDeque::new()));
+    let packets: VecDeque<H4Packet> = vec![].into();
+    let mut mgr = hcimanager::HciManager::new(packets, socket).unwrap();
     mgr.execute().unwrap();
     mgr.process().unwrap();
 }

@@ -71,6 +71,9 @@ pub enum HciCommand {
 
     /// id = OpCode(0x001A, 0x08)
     LeLongTermKeyRequestReply(LeLongTermKeyRequestReply),
+
+    /// id = OpCode(0x001B, 0x08)
+    LeLongTermKeyRequestNegativeReply(ConnectionHandle),
 }
 
 /// id_type = u8
