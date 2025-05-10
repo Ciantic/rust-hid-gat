@@ -71,6 +71,20 @@ impl<'a> PairingHandler {
     // -> Send SmpEncryptionInformation
     // -> Send SmpCentralIdentification
 
+    fn produce_att(&mut self, msg: Vec<AttPdu>) -> Result<Vec<H4Packet>, HciError> {
+        Ok(msg
+            .into_iter()
+            .map(|att| {
+                H4Packet::Acl(HciAcl {
+                    connection_handle: self.connection_handle.clone(),
+                    bc: BroadcastFlag::PointToPoint,
+                    pb: PacketBoundaryFlag::FirstNonFlushable,
+                    msg: L2CapMessage::Att(att),
+                })
+            })
+            .collect())
+    }
+
     fn produce_smp(&mut self, msg: Vec<SmpPdu>) -> Result<Vec<H4Packet>, HciError> {
         Ok(msg
             .into_iter()
@@ -104,12 +118,7 @@ impl<'a> PairingHandler {
         {
             self.peer_mtu = Some(*peer_mtu);
 
-            return Ok(vec![H4Packet::Acl(HciAcl {
-                connection_handle: self.connection_handle.clone(),
-                bc: BroadcastFlag::PointToPoint,
-                pb: PacketBoundaryFlag::FirstNonFlushable,
-                msg: L2CapMessage::Att(AttPdu::ExchangeMtuResponse(self.server_mtu)),
-            })]);
+            return self.produce_att(vec![AttPdu::ExchangeMtuResponse(self.server_mtu)]);
         }
 
         // MTU Response from the peer
