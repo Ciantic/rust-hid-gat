@@ -233,7 +233,6 @@ impl<'a> PairingHandler {
                 ));
                 self.short_term_key = Some(short_term_key);
 
-                // TODO: or LeLongTermKeyRequestNegativeReply
                 let reply = HciCommand::LeLongTermKeyRequestReply(LeLongTermKeyRequestReply {
                     connection_handle: e.connection_handle,
                     long_term_key: short_term_key,
