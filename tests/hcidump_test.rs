@@ -1,7 +1,12 @@
+use std::collections::VecDeque;
+
+use bt_only_headers::hcimanager::AppMsg;
 use bt_only_headers::hcimanager::HciManager;
+use bt_only_headers::hcimanager::MsgProcessor;
 use bt_only_headers::messages::*;
 use bt_only_headers::packer::*;
 use bt_only_headers::socket::MockSocket;
+use bt_only_headers::socket::Socket;
 
 fn parse_hci_dump(dump: String) -> Vec<(bool, Vec<u8>)> {
     // Parse the HCI dump like this:
@@ -199,13 +204,32 @@ fn test_hcimanager() {
         (HciCommand::LeSetAdvertisingEnable(true)),
     ]
     .iter()
-    .map(|f| H4Packet::Command(f.clone()))
-    .collect::<Vec<H4Packet>>();
+    .map(|f| (true, H4Packet::Command(f.clone()).to_bytes()))
+    .collect::<VecDeque<(bool, Vec<u8>)>>();
 
-    let mut mgr = HciManager::new(init_bluetooth.into(), socket).unwrap();
+    let mut mgr = HciManager::new().unwrap();
+    let mut socket = MockSocket::new(init_bluetooth);
+    let mut queue = VecDeque::new();
 
-    for i in 0..100 {
-        mgr.execute().unwrap();
-        mgr.process().unwrap();
+    while let Some(packet) = socket.read().unwrap() {
+        queue.push_front(AppMsg::Recv(packet.clone()));
+
+        while let Some(msg) = queue.pop_front() {
+            // Process the message
+            queue.append(&mut mgr.process(msg.clone()).unwrap().into());
+
+            // Handle the message in main
+            match msg {
+                AppMsg::Send(packet) => {
+                    socket.write(packet).unwrap();
+                }
+                AppMsg::Recv(packet) => {
+                    panic!("Recv should come only out of socket: {:?}", packet);
+                }
+                _ => {}
+            }
+        }
     }
+
+    assert_eq!(queue.len(), 0, "Queue is now empty");
 }

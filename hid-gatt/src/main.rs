@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
@@ -7,12 +8,32 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use bt_only_headers::{hcimanager, messages::H4Packet, socket};
+use bt_only_headers::{
+    hcimanager::{AppMsg, HciManager, MsgProcessor},
+    messages::H4Packet,
+    socket::{self, MockSocket, Socket},
+};
 
 fn main() {
-    let mut socket = Box::new(socket::MockSocket::new(VecDeque::new()));
-    let packets: VecDeque<H4Packet> = vec![].into();
-    let mut mgr = hcimanager::HciManager::new(packets, socket).unwrap();
-    mgr.execute().unwrap();
-    mgr.process().unwrap();
+    let mut socket = MockSocket::new(VecDeque::new());
+    let mut queue: VecDeque<AppMsg> = vec![].into();
+    let mut mgr = HciManager::new().unwrap();
+    while let Some(packet) = socket.read().unwrap() {
+        queue.push_front(AppMsg::Recv(packet));
+        while let Some(msg) = queue.pop_front() {
+            // Process the message
+            queue.append(&mut mgr.process(msg.clone()).unwrap().into());
+
+            // Handle the message in main
+            match msg {
+                AppMsg::Send(packet) => {
+                    socket.write(packet).unwrap();
+                }
+                AppMsg::Recv(packet) => {
+                    panic!("Unexpected packet: {:?}", packet);
+                }
+                _ => {}
+            }
+        }
+    }
 }

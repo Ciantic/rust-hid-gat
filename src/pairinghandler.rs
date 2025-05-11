@@ -1,5 +1,6 @@
 use crate::c1::c1_rev;
 use crate::c1::s1_rev;
+use crate::hcimanager::AppMsg;
 use crate::messages::*;
 use crate::packer::*;
 
@@ -79,26 +80,29 @@ impl<'a> PairingHandler {
             .collect())
     }
 
-    fn produce_smp(&mut self, msg: Vec<SmpPdu>) -> Result<Vec<H4Packet>, HciError> {
+    fn produce_smp(&mut self, msg: Vec<SmpPdu>) -> Result<Vec<AppMsg>, HciError> {
         Ok(msg
             .into_iter()
             .map(|smp| {
-                H4Packet::Acl(HciAcl {
+                AppMsg::Send(H4Packet::Acl(HciAcl {
                     connection_handle: self.connection_handle.clone(),
                     bc: BroadcastFlag::PointToPoint,
                     pb: PacketBoundaryFlag::FirstNonFlushable,
                     msg: L2CapMessage::Smp(smp),
-                })
+                }))
             })
             .collect())
     }
 
-    fn produce_cmd(&mut self, cmd: Vec<HciCommand>) -> Result<Vec<H4Packet>, HciError> {
-        Ok(cmd.into_iter().map(|cmd| H4Packet::Command(cmd)).collect())
+    fn produce_cmd(&mut self, cmd: Vec<HciCommand>) -> Result<Vec<AppMsg>, HciError> {
+        Ok(cmd
+            .into_iter()
+            .map(|cmd| AppMsg::Send(H4Packet::Command(cmd)))
+            .collect())
     }
 
     /// Handle SMP pairing process
-    fn process_acl(&mut self, packet: HciAcl) -> Result<Vec<H4Packet>, HciError> {
+    fn process_acl(&mut self, packet: HciAcl) -> Result<Vec<AppMsg>, HciError> {
         // Check if the packet is for this connection
         if packet.connection_handle != self.connection_handle {
             return Ok(vec![]);
@@ -211,7 +215,7 @@ impl<'a> PairingHandler {
     }
 
     /// Handle HciEvent::LeLongTermKeyRequest
-    fn process_event(&mut self, packet: HciEvent) -> Result<Vec<H4Packet>, HciError> {
+    fn process_event(&mut self, packet: HciEvent) -> Result<Vec<AppMsg>, HciError> {
         use HciEvent::*;
         if let LeMeta(EvtLeMeta::LeLongTermKeyRequest(e)) = packet {
             // Check if the packet is for this connection
@@ -264,16 +268,12 @@ impl<'a> PairingHandler {
 }
 
 impl MsgProcessor for PairingHandler {
-    fn process(&mut self, packet: H4Packet) -> Result<Vec<H4Packet>, HciError> {
+    fn process(&mut self, packet: AppMsg) -> Result<Vec<AppMsg>, HciError> {
         match packet {
-            H4Packet::Acl(acl) => self.process_acl(acl),
-            H4Packet::Event(event) => self.process_event(event),
+            AppMsg::Recv(H4Packet::Acl(acl)) => self.process_acl(acl),
+            AppMsg::Recv(H4Packet::Event(event)) => self.process_event(event),
             _ => Ok(vec![]),
         }
-    }
-
-    fn execute(&mut self) -> Result<Vec<H4Packet>, HciError> {
-        return Ok(vec![]);
     }
 }
 
@@ -304,7 +304,7 @@ mod tests {
 
         // Pairing test:
         let res = pairing_handler
-            .process(H4Packet::Acl(HciAcl {
+            .process(AppMsg::Recv(H4Packet::Acl(HciAcl {
                 connection_handle: ConnectionHandle(64),
                 pb: PacketBoundaryFlag::FirstFlushable,
                 bc: BroadcastFlag::PointToPoint,
@@ -335,12 +335,12 @@ mod tests {
                         _reserved: 0,
                     },
                 })),
-            }))
+            })))
             .unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(
             res[0],
-            H4Packet::Acl(HciAcl {
+            AppMsg::Send(H4Packet::Acl(HciAcl {
                 connection_handle: ConnectionHandle(64),
                 pb: PacketBoundaryFlag::FirstNonFlushable,
                 bc: BroadcastFlag::PointToPoint,
@@ -371,107 +371,107 @@ mod tests {
                         _reserved: 0
                     }
                 }))
-            })
+            }))
         );
 
         // Pairing confirmation
         let res = pairing_handler
-            .process(H4Packet::Acl(HciAcl {
+            .process(AppMsg::Recv(H4Packet::Acl(HciAcl {
                 connection_handle: ConnectionHandle(64),
                 pb: PacketBoundaryFlag::FirstFlushable,
                 bc: BroadcastFlag::PointToPoint,
                 msg: L2CapMessage::Smp(SmpPdu::PairingConfirmation(SmpPairingConfirmation {
                     confirm_value: 261697470624594529963220105986517218981,
                 })),
-            }))
+            })))
             .unwrap();
         assert_eq!(res.len(), 1, "Single pairing confirmation response");
         assert_eq!(
             res[0],
-            H4Packet::Acl(HciAcl {
+            AppMsg::Send(H4Packet::Acl(HciAcl {
                 connection_handle: ConnectionHandle(64),
                 pb: PacketBoundaryFlag::FirstNonFlushable,
                 bc: BroadcastFlag::PointToPoint,
                 msg: L2CapMessage::Smp(SmpPdu::PairingConfirmation(SmpPairingConfirmation {
                     confirm_value: 191883834750298512932102445673732519000,
                 })),
-            }),
+            })),
             "Ensure pairing confirmation is sent"
         );
 
         // Pairing random
         let res = pairing_handler
-            .process(H4Packet::Acl(HciAcl {
+            .process(AppMsg::Recv(H4Packet::Acl(HciAcl {
                 connection_handle: ConnectionHandle(64),
                 pb: PacketBoundaryFlag::FirstFlushable,
                 bc: BroadcastFlag::PointToPoint,
                 msg: L2CapMessage::Smp(SmpPdu::PairingRandom(SmpPairingRandom {
                     random_value: 80250483669964320715789065333977362930,
                 })),
-            }))
+            })))
             .unwrap();
         assert_eq!(res.len(), 1, "Single pairing random response");
         assert_eq!(
             res[0],
-            H4Packet::Acl(HciAcl {
+            AppMsg::Send(H4Packet::Acl(HciAcl {
                 connection_handle: ConnectionHandle(64),
                 pb: PacketBoundaryFlag::FirstNonFlushable,
                 bc: BroadcastFlag::PointToPoint,
                 msg: L2CapMessage::Smp(SmpPdu::PairingRandom(SmpPairingRandom {
                     random_value: 49055469533520638048878300062363381969,
                 })),
-            }),
+            })),
             "Ensure pairing random is sent"
         );
 
         // Recieving LongTermKeyRequest
         let res = pairing_handler
-            .process(H4Packet::Event(HciEvent::LeMeta(
+            .process(AppMsg::Recv(H4Packet::Event(HciEvent::LeMeta(
                 EvtLeMeta::LeLongTermKeyRequest(LeLongTermKeyRequest {
                     connection_handle: ConnectionHandle(64),
                     random_number: 0,
                     encrypted_diversifier: 0,
                 }),
-            )))
+            ))))
             .unwrap();
         assert_eq!(res.len(), 1, "Single long term key request response");
         assert_eq!(
             res[0],
-            H4Packet::Command(HciCommand::LeLongTermKeyRequestReply(
+            AppMsg::Send(H4Packet::Command(HciCommand::LeLongTermKeyRequestReply(
                 LeLongTermKeyRequestReply {
                     connection_handle: ConnectionHandle(64),
                     long_term_key: 282559536878159528170380446798965774951,
                 },
-            )),
+            ))),
             "Ensure long term key request is sent"
         );
 
         // Recieving EncryptionChange
         let res = pairing_handler
-            .process(H4Packet::Event(HciEvent::EncryptionChange(
+            .process(AppMsg::Recv(H4Packet::Event(HciEvent::EncryptionChange(
                 EvtEncryptionChange {
                     status: HciStatus::Success,
                     connection_handle: ConnectionHandle(64),
                     encryption_enabled: true,
                 },
-            )))
+            ))))
             .unwrap();
         assert_eq!(res.len(), 2, "Two responses to encryption change");
         assert_eq!(
             res[0],
-            H4Packet::Acl(HciAcl {
+            AppMsg::Send(H4Packet::Acl(HciAcl {
                 connection_handle: ConnectionHandle(64),
                 pb: PacketBoundaryFlag::FirstNonFlushable,
                 bc: BroadcastFlag::PointToPoint,
                 msg: L2CapMessage::Smp(SmpPdu::EncryptionInformation(SmpEncryptionInformation {
                     long_term_key: 282764688399516531784019739061630454460,
                 })),
-            }),
+            })),
             "Ensure encryption information is sent"
         );
         assert_eq!(
             res[1],
-            H4Packet::Acl(HciAcl {
+            AppMsg::Send(H4Packet::Acl(HciAcl {
                 connection_handle: ConnectionHandle(64),
                 pb: PacketBoundaryFlag::FirstNonFlushable,
                 bc: BroadcastFlag::PointToPoint,
@@ -479,7 +479,7 @@ mod tests {
                     random_number: 723151060346651216,
                     encrypted_diversifier: 0x0000,
                 })),
-            }),
+            })),
             "Ensure central identification is sent"
         );
     }
