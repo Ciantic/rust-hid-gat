@@ -1,3 +1,4 @@
+pub mod atthandler;
 pub mod c1;
 pub mod hcimanager;
 pub mod messages;

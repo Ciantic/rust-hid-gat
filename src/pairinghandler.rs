@@ -14,9 +14,6 @@ pub struct PairingHandler {
     server_encinfo_long_term_key: u128,
     server_cid_random: u64,
     connection_handle: ConnectionHandle,
-    mtu_negotation_started: bool,
-    server_mtu: u16,
-    peer_mtu: Option<u16>,
     max_key_size: Option<u8>,
     preq: Option<[u8; 7]>,
     pres: Option<[u8; 7]>,
@@ -43,9 +40,6 @@ impl<'a> PairingHandler {
             server_encinfo_long_term_key,
             server_cid_random,
             connection_handle: lecon.connection_handle.clone(),
-            mtu_negotation_started: false,
-            server_mtu: 244,
-            peer_mtu: None,
             max_key_size: None,
             preq: None,
             pres: None,
@@ -108,26 +102,6 @@ impl<'a> PairingHandler {
         // Check if the packet is for this connection
         if packet.connection_handle != self.connection_handle {
             return Ok(vec![]);
-        }
-
-        // MTU Exchange from the peer
-        if let HciAcl {
-            msg: L2CapMessage::Att(AttPdu::ExchangeMtuRequest(ref peer_mtu)),
-            ..
-        } = packet
-        {
-            self.peer_mtu = Some(*peer_mtu);
-
-            return self.produce_att(vec![AttPdu::ExchangeMtuResponse(self.server_mtu)]);
-        }
-
-        // MTU Response from the peer
-        if let HciAcl {
-            msg: L2CapMessage::Att(AttPdu::ExchangeMtuResponse(ref peer_mtu)),
-            ..
-        } = packet
-        {
-            self.peer_mtu = Some(*peer_mtu);
         }
 
         // 1. Wait for SmpPdu::PairingRequest
@@ -287,18 +261,6 @@ impl<'a> PairingHandler {
 
         Ok(vec![])
     }
-
-    fn start_negotiate_mtu(&mut self) -> Result<Vec<H4Packet>, HciError> {
-        self.mtu_negotation_started = true;
-        // Start negotiating MTU size
-        let mtu_request = H4Packet::Acl(HciAcl {
-            connection_handle: self.connection_handle.clone(),
-            bc: BroadcastFlag::PointToPoint,
-            pb: PacketBoundaryFlag::FirstNonFlushable,
-            msg: L2CapMessage::Att(AttPdu::ExchangeMtuRequest(self.server_mtu)),
-        });
-        return Ok(vec![mtu_request]);
-    }
 }
 
 impl MsgProcessor for PairingHandler {
@@ -311,10 +273,6 @@ impl MsgProcessor for PairingHandler {
     }
 
     fn execute(&mut self) -> Result<Vec<H4Packet>, HciError> {
-        if !self.mtu_negotation_started {
-            return self.start_negotiate_mtu();
-        }
-
         return Ok(vec![]);
     }
 }
@@ -343,49 +301,6 @@ mod tests {
             282764688399516531784019739061630454460,
             723151060346651216,
         );
-
-        // MTU test:
-        // > Send MTU request 244
-        // < Get MTU request 512
-        // > Send MTU response 244
-        // < Get MTU response 512
-        let res1 = pairing_handler.execute().unwrap();
-        assert_eq!(
-            res1[0],
-            H4Packet::Acl(HciAcl {
-                connection_handle: ConnectionHandle(64),
-                bc: BroadcastFlag::PointToPoint,
-                pb: PacketBoundaryFlag::FirstNonFlushable,
-                msg: L2CapMessage::Att(AttPdu::ExchangeMtuRequest(244)),
-            })
-        );
-        let res2 = pairing_handler
-            .process(H4Packet::Acl(HciAcl {
-                connection_handle: ConnectionHandle(64),
-                bc: BroadcastFlag::PointToPoint,
-                pb: PacketBoundaryFlag::FirstNonFlushable,
-                msg: L2CapMessage::Att(AttPdu::ExchangeMtuRequest(512)),
-            }))
-            .unwrap();
-        assert_eq!(pairing_handler.peer_mtu, Some(512));
-        assert_eq!(
-            res2[0],
-            H4Packet::Acl(HciAcl {
-                connection_handle: ConnectionHandle(64),
-                bc: BroadcastFlag::PointToPoint,
-                pb: PacketBoundaryFlag::FirstNonFlushable,
-                msg: L2CapMessage::Att(AttPdu::ExchangeMtuResponse(244)),
-            })
-        );
-        let res3 = pairing_handler
-            .process(H4Packet::Acl(HciAcl {
-                connection_handle: ConnectionHandle(64),
-                bc: BroadcastFlag::PointToPoint,
-                pb: PacketBoundaryFlag::FirstNonFlushable,
-                msg: L2CapMessage::Att(AttPdu::ExchangeMtuResponse(400)),
-            }))
-            .unwrap();
-        assert_eq!(pairing_handler.peer_mtu, Some(400));
 
         // Pairing test:
         let res = pairing_handler

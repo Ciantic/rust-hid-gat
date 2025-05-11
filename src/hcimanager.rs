@@ -29,6 +29,15 @@ pub enum HciError {
     Unknown(String),
 }
 
+// pub enum HciMsg {
+//     Send(H4Packet),
+//     Recv(H4Packet),
+//     Disconnect(ConnectionHandle),
+//     DisconnectComplete(ConnectionHandle),
+//     Pairing(ConnectionHandle),
+//     PairingComplete(ConnectionHandle),
+// }
+
 impl From<SocketError> for HciError {
     fn from(err: SocketError) -> Self {
         HciError::SocketError(err)
